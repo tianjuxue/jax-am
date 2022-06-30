@@ -20,3 +20,4 @@ pytest-xdist
 matplotlib
 scikit-learn
 numpy
+myst-parser
