@@ -24,6 +24,7 @@ Contents
    :caption: Contents:
 
    myfile
+   usage
 
 
 
