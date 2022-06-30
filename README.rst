@@ -1,7 +1,6 @@
 # JAX-AM
 
-GPU-based numerical simulation for metal additive manufacturing.
-
+A GPU-based simulation toolbox for metal additive manufacturing.
 
 
 ## TODO
