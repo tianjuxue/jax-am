@@ -20,4 +20,3 @@ pytest-xdist
 matplotlib
 scikit-learn
 numpy
-.[ci]  # Install jax from the current directory; jaxlib from pypi.
