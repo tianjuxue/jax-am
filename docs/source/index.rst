@@ -23,6 +23,8 @@ Contents
    :maxdepth: 2
    :caption: Contents:
 
+   myfile
+
 
 
 Indices and tables
