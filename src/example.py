@@ -69,10 +69,10 @@ def run():
     '''
     The laser scanning path is defined using a txt file.
     Each line of the txt file stands for:
-    time [s], x_position [mm], y_position [mm], action_of_turning_laser_on_or_off_at_this_time [N/A]
+    time [s], x_position [mm], y_position [mm], action_of_turning_laser_on_or_off_at_this_time
     '''
     set_params()
-    ts, xs, ys, ps = read_path(f'data/txt/fd_example_1.txt')
+    ts, xs, ys, ps = read_path(f'data/txt/fd_example.txt')
     polycrystal, mesh = polycrystal_fd(args.case)
     y0 = initialization(polycrystal)
     state_rhs, get_T = phase_field(polycrystal)
@@ -80,6 +80,6 @@ def run():
 
 
 if __name__ == "__main__":
-    neper_domain()
+    # neper_domain()
     # write_vtu_files()
-    # run()
+    run()

@@ -260,9 +260,8 @@ def phase_field(polycrystal):
         '''
         Analytic T from https://doi.org/10.1016/j.actamat.2021.116862
         '''
-        Q, alpha = ode_params
-        # Q = 25
-        # alpha = 5.2
+        Q = 25
+        alpha = 5.2
 
         T_ambiant = 300.
 
