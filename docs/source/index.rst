@@ -3,13 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to jax-am's documentation!
+Welcome to JAX-AM's documentation!
 ==================================
 
-**Lumache** (/lu'make/) is a Python library for cooks and food lovers
-that creates recipes mixing random ingredients.
-It pulls data from the `Open Food Facts database <https://world.openfoodfacts.org/>`_
-and offers a *simple* and *intuitive* API.
+**JAX-AM** is a Python library for numerical simulations in additive manufacturing.
 
 Check out the :doc:`usage` section for further information, including
 how to :ref:`installation` the project.

@@ -1,3 +1,7 @@
+.. note::
+
+   This is just a template!
+
 Usage
 =====
 
