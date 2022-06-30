@@ -1,0 +1,23 @@
+sphinx >=3
+sphinx_rtd_theme
+sphinx-book-theme
+sphinx-remove-toctrees
+# Newer versions cause issues; see https://github.com/google/jax/pull/6449
+sphinx-autodoc-typehints==1.11.1
+sphinx-copybutton>=0.5.0
+jupyter-sphinx>=0.3.2
+myst-nb
+
+# Need to pin docutils to 0.16 to make bulleted lists appear correctly on
+# ReadTheDocs: https://stackoverflow.com/a/68008428
+docutils==0.16.0
+
+# Packages used for CI tests.
+pytest
+pytest-xdist
+
+# Packages used for notebook execution
+matplotlib
+scikit-learn
+numpy
+.[ci]  # Install jax from the current directory; jaxlib from pypi.
