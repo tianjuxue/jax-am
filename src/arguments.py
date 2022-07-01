@@ -15,8 +15,9 @@ onp.set_printoptions(precision=10)
 # np.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True)
 # np.set_printoptions(precision=5)
 
-# Manage arguments
+# Manage arguments 
 parser = argparse.ArgumentParser()
+
 parser.add_argument('--num_oris', type=int, default=20)
 parser.add_argument('--num_grains', type=int, default=40000)
 parser.add_argument('--dim', type=int, default=3)

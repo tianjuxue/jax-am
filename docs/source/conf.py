@@ -43,7 +43,6 @@ extensions = ['myst_parser',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
-              'sphinxarg.ext',
               'sphinxcontrib.autoyaml',]
 
 # Add any paths that contain templates here, relative to this directory.

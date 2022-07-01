@@ -1,0 +1,102 @@
+dim:
+  value: 3
+
+num_oris:
+  value: 20
+  unit: N/A 
+
+num_grains:
+  value: 40000
+  unit: N/A
+
+domain_height:
+  value: 0.1
+  unit: mm
+
+domain_width:
+  value: 0.4
+  unit: mm
+
+domain_length:
+  value: 1.
+  unit: mm
+
+dt:
+  value: 2e-7
+  unit: s
+
+T_melt:
+  value: 1700.
+  unit: K
+
+T_ambient:
+  value: 300.
+  unit: K
+
+rho:
+  value: 8.08e-6
+  unit: kg/mm^3
+
+c_p:
+  value: 770.
+  unit: J/(kg*K)
+ 
+power:
+  value: 200.
+  unit: W
+
+power_fraction:
+  value: 0.4
+  unit: N/A
+
+r_beam:
+  value: 0.1
+  unit: mm
+
+emissivity:
+  value: 0.2
+  unit: N/A
+ 
+SB_constant:
+  value: 5.67e-14
+  unit: W/(mm^2*K^4)
+
+h_conv:
+  value: 1e-4
+  unit: W/(mm^2*K)
+
+kappa_T:
+  value: 1e-2
+  unit: W/(mm*K)
+ 
+gas_const:
+  value: 8.3
+  unit: J/(Mol*K)
+
+Qg:
+  value: 1.4e5
+  unit: J/Mol
+
+L0:
+  value: 3.5e12
+  unit: mm^4/(J*s)
+
+kappa_g:
+  value: 2.77e-9
+  unit: J/mm
+
+m_g:
+  value: 2.4e-4
+  unit: J/mm^3
+
+anisotropy:
+  value: 0.15
+  unit: N/A
+
+ad_hoc:
+  value: 1.
+  unit: N/A
+
+write_sol_interval:
+  value: 500
+  unit: N/A 

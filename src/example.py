@@ -8,18 +8,18 @@ import numpy as onp
 import os
 import meshio
 from src.utils import read_path, obj_to_vtu, walltime
-from src.arguments import args
 from src.allen_cahn import polycrystal_fd, phase_field, odeint, explicit_euler
+from src.yaml_parse import args
 
 
 def set_params():
     '''
     If a certain parameter is not set, a default value will be used (see src/arguments.py for details).
     '''
-    args.case = 'fd_example'
-    args.num_grains = 10000
-    args.domain_length = 0.5
-    args.domain_width = 0.2
+    args['case'] = 'fd_example'
+    args['num_grains']['value'] = 10000
+    args['domain_length']['value'] = 0.5
+    args['domain_width']['value'] = 0.2
     args.domain_height = 0.1
     args.r_beam = 0.03
     args.power = 100

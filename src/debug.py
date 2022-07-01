@@ -11,8 +11,34 @@ from functools import partial
 from scipy.spatial.transform import Rotation as R
 from collections import namedtuple
 from matplotlib import pyplot as plt
-from src.arguments import args
-from src.utils import get_unique_ori_colors, obj_to_vtu, walltime
+from src.yaml_parse import args
+# from src.utils import get_unique_ori_colors, obj_to_vtu, walltime
+ 
+
+def test_api(kind=None):
+    """
+    Return test test.
+
+    :param kind: Optional "kind" of ingredients.
+    :type kind: list[str] or None
+    :raise lumache.InvalidKindError: If the kind is invalid.
+    :return: The ingredients list.
+    :rtype: list[str]
+    """
+    return ["shells", "gorgonzola", "parsley"]
+
+
+def test_api2(kind=None):
+    """
+    Return test test.
+
+    :param kind: Optional "kind" of ingredients.
+    :type kind: list[str] or None
+    :raise lumache.InvalidKindError: If the kind is invalid.
+    :return: The ingredients list.
+    :rtype: list[str]
+    """
+    return ["shells", "gorgonzola", "parsley"]
 
 
 # TODO: unique_oris_rgb and unique_grain_directions should be a class property, not an instance property
@@ -50,7 +76,7 @@ def explicit_euler(state, t_crt, f, ode_params):
     return (y_crt, t_crt), y_crt
 
 
-@walltime
+# @walltime
 def odeint(polycrystal, mesh, get_T, stepper, f, y0, ts, ode_params):
     '''
     ODE integrator. 
@@ -95,8 +121,8 @@ def clean_sols():
     '''
     Clean the data folder.
     '''
-    vtk_folder = f"post-processing/vtk/{args.case}/sols"
-    numpy_folder = f"post-processing/numpy/{args.case}/sols"
+    vtk_folder = f"data/vtk/{args.case}/sols"
+    numpy_folder = f"data/numpy/{args.case}/sols"
     files_vtk = glob.glob(vtk_folder + f"/*")
     files_numpy = glob.glob(numpy_folder + f"/*")
     files = files_vtk + files_numpy
@@ -109,9 +135,9 @@ def write_info(polycrystal):
     Mostly for post-processing. E.g., compute grain volume, aspect ratios, etc.
     '''
     if not args.case.startswith('gn_multi_layer'):
-        onp.save(f"post-processing/numpy/{args.case}/info/edges.npy", polycrystal.edges)
-        onp.save(f"post-processing/numpy/{args.case}/info/vols.npy", polycrystal.volumes)
-        onp.save(f"post-processing/numpy/{args.case}/info/centroids.npy", polycrystal.centroids)
+        onp.save(f"data/numpy/{args.case}/info/edges.npy", polycrystal.edges)
+        onp.save(f"data/numpy/{args.case}/info/vols.npy", polycrystal.volumes)
+        onp.save(f"data/numpy/{args.case}/info/centroids.npy", polycrystal.centroids)
 
 
 def write_sols_heper(polycrystal, mesh, y, T):
@@ -148,9 +174,9 @@ def write_sols(polycrystal, mesh, y, T, step):
     '''
     print(f"Write sols to file...")
     T, cell_ori_inds = write_sols_heper(polycrystal, mesh, y, T)
-    onp.save(f"post-processing/numpy/{args.case}/sols/T_{step:03d}.npy", T)
-    onp.save(f"post-processing/numpy/{args.case}/sols/cell_ori_inds_{step:03d}.npy", cell_ori_inds)
-    mesh.write(f"post-processing/vtk/{args.case}/sols/u{step:03d}.vtu")
+    onp.save(f"data/numpy/{args.case}/sols/T_{step:03d}.npy", T)
+    onp.save(f"data/numpy/{args.case}/sols/cell_ori_inds_{step:03d}.npy", cell_ori_inds)
+    mesh.write(f"data/vtk/{args.case}/sols/u{step:03d}.vtu")
  
 
 
@@ -158,12 +184,12 @@ def polycrystal_fd(domain_name='single_layer'):
     '''
     Prepare graph information for finite difference method
     '''
-    filepath = f'post-processing/neper/{domain_name}/domain.msh'
+    filepath = f'data/neper/{domain_name}/domain.msh'
     mesh = meshio.read(filepath)
     points = mesh.points
     cells =  mesh.cells_dict['hexahedron']
     cell_grain_inds = mesh.cell_data['gmsh:physical'][0] - 1
-    onp.save(f"post-processing/numpy/{args.case}/info/cell_grain_inds.npy", cell_grain_inds)
+    onp.save(f"data/numpy/{args.case}/info/cell_grain_inds.npy", cell_grain_inds)
     assert args.num_grains == onp.max(cell_grain_inds) + 1
 
     unique_oris_rgb, unique_grain_directions = get_unique_ori_colors()

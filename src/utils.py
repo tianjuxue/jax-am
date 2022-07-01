@@ -11,15 +11,15 @@ from orix import plot, sampling
 from orix.crystal_map import Phase
 from orix.quaternion import Orientation, symmetry
 from orix.vector import Vector3d
-from src.arguments import args
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
+from src.yaml_parse import args
 
 
 def get_unique_ori_colors():
     onp.random.seed(1)
 
-    ori2 = Orientation.random(args.num_oris)        
+    ori2 = Orientation.random(args.get('num_oris'))        
 
     vx = Vector3d((1, 0, 0))
     vy = Vector3d((0, 1, 0))
@@ -91,7 +91,7 @@ def walltime(func):
         time_elapsed = end_time - start_time
         platform = jax.lib.xla_bridge.get_backend().platform
         print(f"Time elapsed {time_elapsed} on platform {platform}") 
-        with open(f'data/txt/walltime_{platform}_{args.case}_{args.layer:03d}.txt', 'w') as f:
+        with open(f'data/txt/walltime_{platform}_{args.get('case')}_{args.get('layer'):03d}.txt', 'w') as f:
             f.write(f'{start_time}, {end_time}, {time_elapsed}\n')
         return return_values
     return wrapper
@@ -105,7 +105,7 @@ def read_path(path):
     power_control = path_info[:-1, 3]
     ts, xs, ys, ps = [], [], [], []
     for i in range(len(traveled_time) - 1):
-        ts_seg = onp.arange(traveled_time[i], traveled_time[i + 1], args.dt)
+        ts_seg = onp.arange(traveled_time[i], traveled_time[i + 1], args.get('dt'))
         xs_seg = onp.linspace(x_corners[i], x_corners[i + 1], len(ts_seg))
         ys_seg = onp.linspace(y_corners[i], y_corners[i + 1], len(ts_seg))
         ps_seg = onp.linspace(power_control[i], power_control[i], len(ts_seg))
