@@ -1,4 +1,3 @@
-import jraph
 import jax
 import jax.numpy as np
 import numpy as onp
