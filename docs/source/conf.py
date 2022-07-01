@@ -15,11 +15,22 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 
+# If extensions (or modules to document with autodoc) are in another directory,
+# add these directories to sys.path here.
+import pathlib
+import sys
+import os
+sys.path.insert(0, os.path.abspath('../../'))
+
+print(sys.path)
+
+
+ 
 # -- Project information -----------------------------------------------------
 
-project = 'jax-am'
+project = 'JAX-AM'
 copyright = '2022, Tianju Xue'
-author = 'Tianju Xue'
+author = 'Xue et al.'
 
 
 # -- General configuration ---------------------------------------------------
@@ -27,7 +38,13 @@ author = 'Tianju Xue'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['myst_parser']
+extensions = ['myst_parser',
+              'sphinx.ext.duration',
+              'sphinx.ext.doctest',
+              'sphinx.ext.autodoc',
+              'sphinx.ext.autosummary',
+              'sphinxarg.ext',
+              'sphinxcontrib.autoyaml',]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
