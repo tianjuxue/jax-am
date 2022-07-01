@@ -20,12 +20,12 @@ def set_params():
     args['num_grains']['value'] = 10000
     args['domain_length']['value'] = 0.5
     args['domain_width']['value'] = 0.2
-    args.domain_height = 0.1
-    args.r_beam = 0.03
-    args.power = 100
-    args.write_sol_interval = 1000
+    args['domain_height']['value'] = 0.1
+    args['r_beam']['value'] = 0.03
+    args['power']['value'] = 100
+    args['write_sol_interval']['value'] = 1000
     
-    # args.ad_hoc = 0.1
+    # args['ad_hoc']['value'] = 0.1
 
 
 def neper_domain():
@@ -35,10 +35,11 @@ def neper_domain():
     See https://neper.info/ for more information.
     '''
     set_params()
-    os.system(f'neper -T -n {args.num_grains} -id 1 -regularization 0 -domain "cube({args.domain_length},{args.domain_width},{args.domain_height})" \
-                -o data/neper/{args.case}/domain -format tess,obj,ori')
-    os.system(f'neper -T -loadtess data/neper/{args.case}/domain.tess -statcell x,y,z,vol,facelist -statface x,y,z,area')
-    os.system(f'neper -M -rcl 1 -elttype hex -faset faces data/neper/{args.case}/domain.tess')
+    os.system(f'''neper -T -n {args['num_grains']['value']} -id 1 -regularization 0 -domain "cube({args['domain_length']['value']},\
+               {args['domain_width']['value']},{args['domain_height']['value']})" \
+                -o post-processing/neper/{args['case']}/domain -format tess,obj,ori''')
+    os.system(f"neper -T -loadtess post-processing/neper/{args['case']}/domain.tess -statcell x,y,z,vol,facelist -statface x,y,z,area")
+    os.system(f"neper -M -rcl 1 -elttype hex -faset faces post-processing/neper/{args['case']}/domain.tess")
 
 
 def write_vtu_files():
@@ -47,11 +48,11 @@ def write_vtu_files():
     You may use Paraview to open the output vtu files.
     '''
     set_params()
-    filepath = f'data/neper/{args.case}/domain.msh'
+    filepath = f"post-processing/neper/{args['case']}/domain.msh"
     fd_mesh = meshio.read(filepath)
-    fd_mesh.write(f'data/vtk/{args.case}/mesh/fd_mesh.vtu')
-    poly_mesh = obj_to_vtu(args.case)
-    poly_mesh.write(f'data/vtk/{args.case}/mesh/poly_mesh.vtu')
+    fd_mesh.write(f"post-processing/vtk/{args['case']}/mesh/fd_mesh.vtu")
+    poly_mesh = obj_to_vtu(args['case'])
+    poly_mesh.write(f"post-processing/vtk/{args['case']}/mesh/poly_mesh.vtu")
 
 
 def initialization(poly_sim):
@@ -59,7 +60,7 @@ def initialization(poly_sim):
     Prescribe the initial conditions for eta.
     '''
     num_nodes = len(poly_sim.centroids)
-    eta = np.zeros((num_nodes, args.num_oris))
+    eta = np.zeros((num_nodes, args['num_oris']['value']))
     eta = eta.at[np.arange(num_nodes), poly_sim.cell_ori_inds].set(1)
     y0 = eta
     return y0
@@ -72,8 +73,8 @@ def run():
     time [s], x_position [mm], y_position [mm], action_of_turning_laser_on_or_off_at_this_time
     '''
     set_params()
-    ts, xs, ys, ps = read_path(f'data/txt/fd_example.txt')
-    polycrystal, mesh = polycrystal_fd(args.case)
+    ts, xs, ys, ps = read_path(f'pre-processing/txt/fd_example.txt')
+    polycrystal, mesh = polycrystal_fd(args['case'])
     y0 = initialization(polycrystal)
     state_rhs, get_T = phase_field(polycrystal)
     odeint(polycrystal, mesh, get_T, explicit_euler, state_rhs, y0, ts, [])

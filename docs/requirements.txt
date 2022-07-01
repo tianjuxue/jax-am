@@ -24,3 +24,6 @@ numpy
 # More
 myst-parser
 sphinxcontrib-autoyaml
+jax[cpu]
+meshio[all]
+orix

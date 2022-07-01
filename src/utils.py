@@ -19,7 +19,7 @@ from src.yaml_parse import args
 def get_unique_ori_colors():
     onp.random.seed(1)
 
-    ori2 = Orientation.random(args.get('num_oris'))        
+    ori2 = Orientation.random(args['num_oris']['value'])        
 
     vx = Vector3d((1, 0, 0))
     vy = Vector3d((0, 1, 0))
@@ -32,7 +32,7 @@ def get_unique_ori_colors():
     rgb_z = ipfkey_z.orientation2color(ori2)
     rgb = onp.stack((rgb_x, rgb_y, rgb_z))
 
-    onp.save(f"data/numpy/quat.npy", ori2.data)
+    onp.save(f"post-processing/numpy/quat.npy", ori2.data)
     dx = onp.array([1., 0., 0.])
     dy = onp.array([0., 1., 0.])
     dz = onp.array([0., 0., 1.])
@@ -53,17 +53,17 @@ def get_unique_ori_colors():
         plt.rcParams.update(new_params)
         ori2.symmetry = symmetry.Oh
         ori2.scatter("ipf", c=rgb_x, direction=ipfkey_x.direction)
-        # plt.savefig(f'data/pdf/ipf_x.pdf', bbox_inches='tight')
+        # plt.savefig(f'post-processing/pdf/ipf_x.pdf', bbox_inches='tight')
         ori2.scatter("ipf", c=rgb_y, direction=ipfkey_y.direction)
-        # plt.savefig(f'data/pdf/ipf_y.pdf', bbox_inches='tight')
+        # plt.savefig(f'post-processing/pdf/ipf_y.pdf', bbox_inches='tight')
         ori2.scatter("ipf", c=rgb_z, direction=ipfkey_z.direction)
-        # plt.savefig(f'data/pdf/ipf_z.pdf', bbox_inches='tight')
+        # plt.savefig(f'post-processing/pdf/ipf_z.pdf', bbox_inches='tight')
 
     return rgb, grain_directions
 
 
 def obj_to_vtu(domain_name):
-    filepath=f'data/neper/{domain_name}/domain.obj'
+    filepath=f'post-processing/neper/{domain_name}/domain.obj'
     file = open(filepath, 'r')
     lines = file.readlines()
     points = []
@@ -91,7 +91,7 @@ def walltime(func):
         time_elapsed = end_time - start_time
         platform = jax.lib.xla_bridge.get_backend().platform
         print(f"Time elapsed {time_elapsed} on platform {platform}") 
-        with open(f'data/txt/walltime_{platform}_{args.get('case')}_{args.get('layer'):03d}.txt', 'w') as f:
+        with open(f"post-processing/txt/walltime_{platform}_{args['case']['value']}_{args['layer']['value']:03d}.txt", 'w') as f:
             f.write(f'{start_time}, {end_time}, {time_elapsed}\n')
         return return_values
     return wrapper
@@ -105,7 +105,7 @@ def read_path(path):
     power_control = path_info[:-1, 3]
     ts, xs, ys, ps = [], [], [], []
     for i in range(len(traveled_time) - 1):
-        ts_seg = onp.arange(traveled_time[i], traveled_time[i + 1], args.get('dt'))
+        ts_seg = onp.arange(traveled_time[i], traveled_time[i + 1], args['dt']['value'])
         xs_seg = onp.linspace(x_corners[i], x_corners[i + 1], len(ts_seg))
         ys_seg = onp.linspace(y_corners[i], y_corners[i + 1], len(ts_seg))
         ps_seg = onp.linspace(power_control[i], power_control[i], len(ts_seg))

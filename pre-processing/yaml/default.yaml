@@ -22,7 +22,7 @@ domain_length:
   unit: mm
 
 dt:
-  value: 2e-7
+  value: 2.e-7
   unit: s
 
 T_melt:
@@ -62,11 +62,11 @@ SB_constant:
   unit: W/(mm^2*K^4)
 
 h_conv:
-  value: 1e-4
+  value: 1.e-4
   unit: W/(mm^2*K)
 
 kappa_T:
-  value: 1e-2
+  value: 1.e-2
   unit: W/(mm*K)
  
 gas_const:
@@ -74,11 +74,11 @@ gas_const:
   unit: J/(Mol*K)
 
 Qg:
-  value: 1.4e5
+  value: 1.4e+5
   unit: J/Mol
 
 L0:
-  value: 3.5e12
+  value: 3.5e+12
   unit: mm^4/(J*s)
 
 kappa_g:
