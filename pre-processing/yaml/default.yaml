@@ -1,102 +1,105 @@
-dim:
-  value: 3
+###
+# Dimension
+dim: 3
 
-num_oris:
-  value: 20
-  unit: N/A 
+###
+# Number of orientations.
+num_oris: 20
 
-num_grains:
-  value: 40000
-  unit: N/A
+###
+# Number of grains.
+num_grains: 40000
 
-domain_height:
-  value: 0.1
-  unit: mm
+###
+# The height of the domain (z-direction domain size). Unit: [mm]
+domain_height: 0.1
 
-domain_width:
-  value: 0.4
-  unit: mm
+###
+# The width of the domain (y-direction domain size). Unit: [mm]
+domain_width: 0.4
 
-domain_length:
-  value: 1.
-  unit: mm
+###
+# The length of the domain (y-direction domain size). Unit: [mm]
+domain_length: 1.
 
-dt:
-  value: 2.e-7
-  unit: s
-
-T_melt:
-  value: 1700.
-  unit: K
-
-T_ambient:
-  value: 300.
-  unit: K
-
-rho:
-  value: 8.08e-6
-  unit: kg/mm^3
-
-c_p:
-  value: 770.
-  unit: J/(kg*K)
+###
+# Melting point. Unit: [K]
+T_melt: 1700.
  
-power:
-  value: 200.
-  unit: W
-
-power_fraction:
-  value: 0.4
-  unit: N/A
-
-r_beam:
-  value: 0.1
-  unit: mm
-
-emissivity:
-  value: 0.2
-  unit: N/A
+###
+# Ambient temperature. Unit: [K]
+T_ambient: 300.
  
-SB_constant:
-  value: 5.67e-14
-  unit: W/(mm^2*K^4)
-
-h_conv:
-  value: 1.e-4
-  unit: W/(mm^2*K)
-
-kappa_T:
-  value: 1.e-2
-  unit: W/(mm*K)
+###
+# Density. Unit: [kg/mm^3]
+rho: 8.08e-6
+  
+###
+# Specific heat. Unit: [J/(kg*K)]
+c_p: 770.
  
-gas_const:
-  value: 8.3
-  unit: J/(Mol*K)
+###
+# Laser power. Unit: [W]
+power: 200.
+ 
+###
+# Laser power fraction. Unit: []
+power_fraction: 0.4
+ 
+###
+# Laser beam size. Unit: [mm]
+r_beam: 0.1
+ 
+###
+# Emissivity. Unit: []
+emissivity: 0.2
+ 
+###
+# Stefan–Boltzmann constant. Unit: [W/(mm^2*K^4)]
+SB_constant: 5.67e-14
+ 
+###
+# Heat convection coefficient. Unit: [W/(mm^2*K)]
+h_conv: 1.e-4
+  
+###
+# Thermal conductivity. Unit: [W/(mm*K)]
+kappa_T: 1.e-2
+ 
+###
+# Gas constant. Unit: [J/(Mol*K)]
+gas_const: 8.3
+  
+###
+# Qg (phase-field parameter). Unit: [J/Mol]
+Qg: 1.4e+5
+   
+###
+# L0 (phase-field parameter). Unit: [mm^4/(J*s)]
+L0: 3.5e+12
 
-Qg:
-  value: 1.4e+5
-  unit: J/Mol
+###
+# kappa_g (phase-field parameter). Unit: [J/mm]
+kappa_g: 2.77e-9
+ 
+###
+# m_g (phase-field parameter). Unit: [J/mm^3]
+m_g: 2.4e-4
+ 
+###
+# anisotropy (phase-field parameter). Unit: []
+anisotropy: 0.15
+ 
+###
+# An ad-hoc parameter (phase-field parameter). Unit: []
+ad_hoc: 1.
 
-L0:
-  value: 3.5e+12
-  unit: mm^4/(J*s)
+###
+# The time step for integration. Unit: [s]
+dt: 2.e-7
 
-kappa_g:
-  value: 2.77e-9
-  unit: J/mm
-
-m_g:
-  value: 2.4e-4
-  unit: J/mm^3
-
-anisotropy:
-  value: 0.15
-  unit: N/A
-
-ad_hoc:
-  value: 1.
-  unit: N/A
-
+###
+# Out put steps.
 write_sol_interval:
   value: 500
   unit: N/A 

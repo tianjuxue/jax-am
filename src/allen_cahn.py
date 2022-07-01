@@ -69,7 +69,7 @@ def odeint(polycrystal, mesh, get_T, stepper, f, y0, ts, ode_params):
             inspect_sol(y, y0, T)
             if not np.all(np.isfinite(y)):          
                 raise ValueError(f"Found np.inf or np.nan in y - stop the program")
-        write_sol_interval = args['write_sol_interval']['value']
+        write_sol_interval = args['write_sol_interval']
         if (i + 1) % write_sol_interval == 0:
             write_sols(polycrystal, mesh, y, T, (i + 1) // write_sol_interval)
 
@@ -84,7 +84,7 @@ def inspect_sol(y, y0, T):
     eta0 = np.argmax(y0, axis=1)
     eta = np.argmax(y, axis=1)
     change_eta = np.where(eta0 == eta, 0, 1)
-    change_T = np.where(T >= args['T_melt']['value'], 1, 0)
+    change_T = np.where(T >= args['T_melt'], 1, 0)
     print(f"percent of change of orientations = {np.sum(change_eta)/len(change_eta)*100}%")
     print(f"percet of T >= T_melt = {np.sum(change_T)/len(change_T)*100}%")
     print(f"max T = {np.max(T)}")
@@ -115,7 +115,7 @@ def write_info(polycrystal):
 
 def write_sols_heper(polycrystal, mesh, y, T):
    
-    zeta = T.reshape(-1) < args['T_melt']['value']
+    zeta = T.reshape(-1) < args['T_melt']
     eta = y
     eta_max = onp.max(eta, axis=1)
     cell_ori_inds = onp.argmax(eta, axis=1)
@@ -140,10 +140,10 @@ def write_sols_heper(polycrystal, mesh, y, T):
 
 def write_sols(polycrystal, mesh, y, T, step):
     '''
-    Use Paraview to open .vtu files for visualization of:
-    1. Temeperature field (T)
-    2. Liquid/Solid phase (zeta)
-    3. Grain orientations (eta)
+    Output solution .vtu files that can be visualized by Paraview: 
+    1. Temeperature field (:math:`T`)
+    2. Liquid/Solid phase (:math:`\zeta`)
+    3. Grain orientations (:math:`\eta`)
     '''
     print(f"Write sols to file...")
     T, cell_ori_inds = write_sols_heper(polycrystal, mesh, y, T)
@@ -163,21 +163,21 @@ def polycrystal_fd(domain_name='single_layer'):
     cells =  mesh.cells_dict['hexahedron']
     cell_grain_inds = mesh.cell_data['gmsh:physical'][0] - 1
     onp.save(f"post-processing/numpy/{args['case']}/info/cell_grain_inds.npy", cell_grain_inds)
-    assert args['num_grains']['value'] == onp.max(cell_grain_inds) + 1
+    assert args['num_grains'] == onp.max(cell_grain_inds) + 1
 
     unique_oris_rgb, unique_grain_directions = get_unique_ori_colors()
-    grain_oris_inds = onp.random.randint(args['num_oris']['value'], size=args['num_grains']['value'])
+    grain_oris_inds = onp.random.randint(args['num_oris'], size=args['num_grains'])
     cell_ori_inds = onp.take(grain_oris_inds, cell_grain_inds, axis=0)
 
-    Nx = round(args['domain_length']['value'] / points[1, 0])
-    Ny = round(args['domain_width']['value'] / points[Nx + 1, 1])
-    Nz = round(args['domain_height']['value'] / points[(Nx + 1)*(Ny + 1), 2])
-    args['Nx'] = {'value': Nx}  
-    args['Ny'] = {'value': Ny} 
-    args['Nz'] = {'value': Nz} 
+    Nx = round(args['domain_length'] / points[1, 0])
+    Ny = round(args['domain_width'] / points[Nx + 1, 1])
+    Nz = round(args['domain_height'] / points[(Nx + 1)*(Ny + 1), 2])
+    args['Nx'] = Nx
+    args['Ny'] = Ny
+    args['Nz'] = Nz
 
-    print(f"Total num of grains = {args['num_grains']['value']}")
-    print(f"Total num of orientations = {args['num_oris']['value']}")
+    print(f"Total num of grains = {args['num_grains']}")
+    print(f"Total num of orientations = {args['num_oris']}")
     print(f"Total num of finite difference cells = {len(cells)}")
     assert Nx*Ny*Nz == len(cells)
 
@@ -198,7 +198,7 @@ def polycrystal_fd(domain_name='single_layer'):
     edges = onp.array(edges)
     cell_points = onp.take(points, cells, axis=0)
     centroids = onp.mean(cell_points, axis=1)
-    domain_vol = args['domain_length']['value']*args['domain_width']['value']*args['domain_height']['value']
+    domain_vol = args['domain_length']*args['domain_width']*args['domain_height']
     volumes = domain_vol / (Nx*Ny*Nz) * onp.ones(len(cells))
     ch_len = (domain_vol / len(cells))**(1./3.) * onp.ones(len(edges))
 
@@ -207,7 +207,7 @@ def polycrystal_fd(domain_name='single_layer'):
         for face_ind in face_inds]), axes=(1, 0, 2))
     
     boundary_face_areas = []
-    domain_measures = [args['domain_length']['value'], args['domain_width']['value'], args['domain_height']['value']]
+    domain_measures = [args['domain_length'], args['domain_width'], args['domain_height']]
     face_cell_nums = [Ny*Nz, Nx*Nz, Nx*Ny]
     for i, domain_measure in enumerate(domain_measures):
         cell_area = domain_vol/domain_measure/face_cell_nums[i]
@@ -217,7 +217,7 @@ def polycrystal_fd(domain_name='single_layer'):
 
     boundary_face_areas = onp.transpose(onp.stack(boundary_face_areas))
 
-    meta_info = onp.array([0., 0., 0., args['domain_length']['value'], args['domain_width']['value'], args['domain_height']['value']])
+    meta_info = onp.array([0., 0., 0., args['domain_length'], args['domain_width'], args['domain_height']])
     polycrystal = PolyCrystal(edges, ch_len, centroids, volumes, unique_oris_rgb, unique_grain_directions,
                               cell_ori_inds, boundary_face_areas, boundary_face_centroids, meta_info)
 
@@ -230,18 +230,17 @@ def phase_field(polycrystal):
     # TODO: make this simpler
     mesh_h = polycrystal.ch_len[0]
 
-
     # TODO: consider anisotropic growth
     def update_anisotropy():
 
         sender_centroids = np.take(centroids, graph.senders, axis=0)
         receiver_centroids = np.take(centroids, graph.receivers, axis=0)
         edge_directions = sender_centroids - receiver_centroids
-        edge_directions = np.repeat(edge_directions[:, None, :], args['num_oris']['value'], axis=1) # (num_edges, num_oris, dim)
+        edge_directions = np.repeat(edge_directions[:, None, :], args['num_oris'], axis=1) # (num_edges, num_oris, dim)
  
         unique_grain_directions = polycrystal.unique_grain_directions # (num_directions_per_cube, num_oris, dim)
 
-        assert edge_directions.shape == (len(graph.senders), args['num_oris']['value'], args['dim']['value'])
+        assert edge_directions.shape == (len(graph.senders), args['num_oris'], args['dim'])
         cosines = np.sum(unique_grain_directions[None, :, :, :] * edge_directions[:, None, :, :], axis=-1) \
                   / (np.linalg.norm(edge_directions, axis=-1)[:, None, :])
         anlges =  np.arccos(cosines) 
@@ -249,9 +248,9 @@ def phase_field(polycrystal):
         anlges = np.where(anlges < np.pi/2., anlges, np.pi - anlges)
         anlges = np.min(anlges, axis=1)
 
-        anisotropy_term = 1. + args['anisotropy']['value'] * (np.cos(anlges)**4 + np.sin(anlges)**4) # (num_edges, num_oris)
+        anisotropy_term = 1. + args['anisotropy'] * (np.cos(anlges)**4 + np.sin(anlges)**4) # (num_edges, num_oris)
 
-        assert anisotropy_term.shape == (len(graph.senders), args['num_oris']['value'])
+        assert anisotropy_term.shape == (len(graph.senders), args['num_oris'])
         graph.edges['anisotropy'] = anisotropy_term
         print("End of compute_anisotropy...")
 
@@ -265,13 +264,13 @@ def phase_field(polycrystal):
         T_ambiant = 300.
 
         kappa = 2.7*1e-2
-        x0 = 0.2*args['domain_length']['value']
+        x0 = 0.2*args['domain_length']
 
         vel = 0.6/0.0024
 
         X = centroids[:, 0] - x0 - vel * t
-        Y = centroids[:, 1] - 0.5*args['domain_width']['value']
-        Z = centroids[:, 2] - args['domain_height']['value']
+        Y = centroids[:, 1] - 0.5*args['domain_width']
+        Z = centroids[:, 2] - args['domain_height']
         R = np.sqrt(X**2 + Y**2 + Z**2)
         T = T_ambiant + Q / (2 * np.pi * kappa) / R * np.exp(-vel / (2*alpha) * (R + X))
 
@@ -286,7 +285,7 @@ def phase_field(polycrystal):
         grain_energy_1 = np.sum((eta**4/4. - eta**2/2.))
         graph_energy_2 = gamma * (np.sum(vmap_outer(eta, eta)**2) - np.sum(eta**4))  
         graph_energy_3 = np.sum((1 - zeta.reshape(-1))**2 * np.sum(eta**2, axis=1).reshape(-1))
-        grain_energy = args['m_g']['value'] * (grain_energy_1 +  graph_energy_2 + graph_energy_3)
+        grain_energy = args['m_g'] * (grain_energy_1 +  graph_energy_2 + graph_energy_3)
         return grain_energy
 
     local_energy_grad_fn = jax.grad(local_energy_fn, argnums=0) 
@@ -294,10 +293,10 @@ def phase_field(polycrystal):
     def state_rhs(state, t, ode_params):
         eta = state
         T = get_T(t, ode_params)
-        zeta = 0.5 * (1 - np.tanh(1e1*(T/args['T_melt']['value'] - 1)))
-        local_energy_grad = local_energy_grad_fn(eta, zeta) / args['ad_hoc']['value']
+        zeta = 0.5 * (1 - np.tanh(1e1*(T/args['T_melt'] - 1)))
+        local_energy_grad = local_energy_grad_fn(eta, zeta) / args['ad_hoc']
         # TODO: concatenate is slow, any workaround?
-        eta_xyz = np.reshape(eta, (args['Nz']['value'], args['Ny']['value'], args['Nx']['value'], args['num_oris']['value']))
+        eta_xyz = np.reshape(eta, (args['Nz'], args['Ny'], args['Nx'], args['num_oris']))
         eta_neg_x = np.concatenate((eta_xyz[:, :, :1, :], eta_xyz[:, :, :-1, :]), axis=2)
         eta_pos_x = np.concatenate((eta_xyz[:, :, 1:, :], eta_xyz[:, :, -1:, :]), axis=2)
         eta_neg_y = np.concatenate((eta_xyz[:, :1, :, :], eta_xyz[:, :-1, :, :]), axis=1)
@@ -307,16 +306,12 @@ def phase_field(polycrystal):
         # See https://en.wikipedia.org/wiki/Finite_difference "Second-order central"
         laplace_xyz = -np.stack((eta_pos_x - 2*eta_xyz + eta_neg_x, 
                                  eta_pos_y - 2*eta_xyz + eta_neg_y, 
-                                 eta_pos_z - 2*eta_xyz + eta_neg_z), axis=-1) / mesh_h**2 * args['kappa_g']['value'] * args['ad_hoc']['value']
-        assert laplace_xyz.shape == (args['Nz']['value'], args['Ny']['value'], args['Nx']['value'], args['num_oris']['value'], args['dim']['value'])
-        laplace = np.sum(laplace_xyz.reshape(-1, args['num_oris']['value'], args['dim']['value']), axis=-1)
+                                 eta_pos_z - 2*eta_xyz + eta_neg_z), axis=-1) / mesh_h**2 * args['kappa_g'] * args['ad_hoc']
+        assert laplace_xyz.shape == (args['Nz'], args['Ny'], args['Nx'], args['num_oris'], args['dim'])
+        laplace = np.sum(laplace_xyz.reshape(-1, args['num_oris'], args['dim']), axis=-1)
         assert local_energy_grad.shape == laplace.shape
-        Lg = args['L0']['value'] * np.exp(-args['Qg']['value'] / (T*args['gas_const']['value']))
+        Lg = args['L0'] * np.exp(-args['Qg'] / (T*args['gas_const']))
         rhs = -Lg * (local_energy_grad + laplace)
         return rhs
 
     return state_rhs, get_T
-
-
-
- 

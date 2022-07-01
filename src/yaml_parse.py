@@ -24,7 +24,3 @@ yaml_filepath = os.path.realpath(os.path.join(os.path.dirname(__file__), '../pre
 with open(yaml_filepath) as f:
     args = yaml.load(f, Loader=yaml.FullLoader)
     # print(args)
-
-
-
-

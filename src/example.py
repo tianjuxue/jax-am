@@ -17,15 +17,15 @@ def set_params():
     If a certain parameter is not set, a default value will be used (see src/arguments.py for details).
     '''
     args['case'] = 'fd_example'
-    args['num_grains']['value'] = 10000
-    args['domain_length']['value'] = 0.5
-    args['domain_width']['value'] = 0.2
-    args['domain_height']['value'] = 0.1
-    args['r_beam']['value'] = 0.03
-    args['power']['value'] = 100
-    args['write_sol_interval']['value'] = 1000
+    args['num_grains'] = 10000
+    args['domain_length'] = 0.5
+    args['domain_width'] = 0.2
+    args['domain_height'] = 0.1
+    args['r_beam'] = 0.03
+    args['power'] = 100
+    args['write_sol_interval'] = 1000
     
-    # args['ad_hoc']['value'] = 0.1
+    # args['ad_hoc'] = 0.1
 
 
 def neper_domain():
@@ -35,8 +35,8 @@ def neper_domain():
     See https://neper.info/ for more information.
     '''
     set_params()
-    os.system(f'''neper -T -n {args['num_grains']['value']} -id 1 -regularization 0 -domain "cube({args['domain_length']['value']},\
-               {args['domain_width']['value']},{args['domain_height']['value']})" \
+    os.system(f'''neper -T -n {args['num_grains']} -id 1 -regularization 0 -domain "cube({args['domain_length']},\
+               {args['domain_width']},{args['domain_height']})" \
                 -o post-processing/neper/{args['case']}/domain -format tess,obj,ori''')
     os.system(f"neper -T -loadtess post-processing/neper/{args['case']}/domain.tess -statcell x,y,z,vol,facelist -statface x,y,z,area")
     os.system(f"neper -M -rcl 1 -elttype hex -faset faces post-processing/neper/{args['case']}/domain.tess")
@@ -60,7 +60,7 @@ def initialization(poly_sim):
     Prescribe the initial conditions for eta.
     '''
     num_nodes = len(poly_sim.centroids)
-    eta = np.zeros((num_nodes, args['num_oris']['value']))
+    eta = np.zeros((num_nodes, args['num_oris']))
     eta = eta.at[np.arange(num_nodes), poly_sim.cell_ori_inds].set(1)
     y0 = eta
     return y0
