@@ -10,7 +10,7 @@ from src.yaml_parse import args
 
 def set_params():
     '''
-    If a certain parameter is not set, a default value will be used (see src/arguments.py for details).
+    If a certain parameter is not set, a default value will be used according to the YAML file.
     '''
     args['case'] = 'fd_example'
     args['num_grains'] = 20000

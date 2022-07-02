@@ -17,7 +17,7 @@ def get_T(t, polycrystal):
     alpha = 5.2
     kappa = 2.7*1e-2
     x0 = 0.2*args['domain_x']
-    vel = 0.6*args['domain_x'] / args['laser_time']['time'][-1]
+    vel = 0.6*args['domain_x'] / args['laser_path']['time'][-1]
 
     X = centroids[:, 0] - x0 - vel * t
     Y = centroids[:, 1] - 0.5*args['domain_y']
@@ -61,11 +61,9 @@ class CFDSolverToBeImplemented(ODESolver):
 
     def stepper(self, state_pre, t_crt, ode_params):
         # You may refer to the class PFSolver in allen_cahn.py to see how this function should be implemented.
-        T = get_T(t_crt, self.polycrystal)
-        return (T, t_crt), T
+        pass
         
 
     def ini_cond(self):
         # You may refer to the class PFSolver in allen_cahn.py to see how this function should be implemented.
-        T0 = get_T(0., self.polycrystal)
-        return T0
+        pass
