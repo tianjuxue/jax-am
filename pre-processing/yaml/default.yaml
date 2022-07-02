@@ -12,15 +12,15 @@ num_grains: 40000
 
 ###
 # The height of the domain (z-direction domain size). Unit: [mm]
-domain_height: 0.1
+domain_z: 0.1
 
 ###
 # The width of the domain (y-direction domain size). Unit: [mm]
-domain_width: 0.4
+domain_y: 0.4
 
 ###
 # The length of the domain (y-direction domain size). Unit: [mm]
-domain_length: 1.
+domain_x: 1.
 
 ###
 # Melting point. Unit: [K]
@@ -95,11 +95,24 @@ anisotropy: 0.15
 ad_hoc: 1.
 
 ###
+# Output solution steps.
+write_sol_interval: 500
+ 
+###
+# Check solution steps.
+check_sol_interval: 20
+
+###
 # The time step for integration. Unit: [s]
 dt: 2.e-7
 
 ###
-# Out put steps.
-write_sol_interval:
-  value: 500
-  unit: N/A 
+# Laser toolpath. 
+# Unit for time: [s]
+# Unit for x_pos and y_pos: [mm]
+laser_path:
+  time: [0., 0.0024]
+  x_pos: [0.2, 0.8]
+  y_pos: [0.1, 0.1]
+  switch: [1]
+

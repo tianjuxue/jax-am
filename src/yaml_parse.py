@@ -21,6 +21,8 @@ onp.set_printoptions(precision=10)
 
 yaml_filepath = os.path.realpath(os.path.join(os.path.dirname(__file__), '../pre-processing/yaml/default.yaml'))
 
+# TODO: do some basic checks for the validity of parameters
 with open(yaml_filepath) as f:
     args = yaml.load(f, Loader=yaml.FullLoader)
-    # print(args)
+    print(f"YAML parameters:")
+    print(yaml.dump(args, default_flow_style=False))

@@ -5,7 +5,7 @@ Phase-filed solver
 ------------------
 
 .. automodule:: src.allen_cahn
-   :members: write_sols, rk4
+   :members: explicit_euler, rk4
 
    
    
