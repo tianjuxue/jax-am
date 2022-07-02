@@ -42,8 +42,7 @@ def generate_neper():
 
 def run():
     set_params()
-    toolpath_file = f'pre-processing/txt/fd_example.txt'
-    solver = MultiVarSolver(toolpath_file)
+    solver = MultiVarSolver()
     solver.solve()
 
 

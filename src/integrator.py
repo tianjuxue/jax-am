@@ -13,8 +13,7 @@ class MultiVarSolver:
     One-way coupling of CFD solver and PF solver.
     Namely, PF solver consumes temperature field produced by CFD solver in each time step.
     '''
-    def __init__(self, toolpath_file):
-        self.toolpath_file = toolpath_file
+    def __init__(self):
         self.polycrystal = Field()
 
     @walltime
