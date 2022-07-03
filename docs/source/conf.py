@@ -21,15 +21,14 @@ import pathlib
 import sys
 import os
 sys.path.insert(0, os.path.abspath('../../'))
-
-print(sys.path)
+# print(sys.path)
 
 
  
 # -- Project information -----------------------------------------------------
 
 project = 'JAX-AM'
-copyright = '2022, Tianju Xue'
+copyright = '2022, Xue et al.'
 author = 'Xue et al.'
 
 
@@ -43,7 +42,8 @@ extensions = ['myst_parser',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
-              'sphinxcontrib.autoyaml',]
+              'sphinxcontrib.autoyaml',
+              'sphinx.ext.napoleon',]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

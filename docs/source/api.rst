@@ -1,14 +1,12 @@
 API reference
 =============
 
-Phase-filed solver
-------------------
+Abstract ODE solver
+-------------------
 
-.. automodule:: src.allen_cahn
-   :members: explicit_euler, rk4
+.. automodule:: src.abstract_solver
+   :members:
 
-   
-   
 
 
 Utility functions

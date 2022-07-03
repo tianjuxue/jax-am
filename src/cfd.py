@@ -2,7 +2,7 @@ import jax
 import jax.numpy as np
 from functools import partial
 from src.yaml_parse import args
-from src.abstrac_solver import ODESolver
+from src.abstract_solver import ODESolver
 from src.utils import read_path
 
 

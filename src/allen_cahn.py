@@ -6,7 +6,7 @@ import glob
 import time
 from functools import partial
 from src.yaml_parse import args
-from src.abstrac_solver import ODESolver
+from src.abstract_solver import ODESolver
 
 # gpus = jax.devices('gpu')
 # @partial(jax.jit, static_argnums=(2,), device=gpus[-1])
