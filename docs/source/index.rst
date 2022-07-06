@@ -13,6 +13,42 @@ Welcome to JAX-AM's documentation!
 
    This project is under active development.
 
+Solving Problems in Additive Manufacturing
+------------------------------------------
+
+.. figure:: ../materials/single_track_T_DNS.gif
+  :width: 400
+  :align: center
+
+  Temperature field
+
+.. figure:: ../materials/single_track_zeta_DNS.gif
+  :width: 400
+  :alt: Alternative text
+  :align: center
+
+  Melt pool
+
+.. figure:: ../materials/single_track_eta_DNS.gif
+  :width: 400
+  :alt: Alternative text
+  :align: center
+
+  Microstructure
+
+
+Simulating Explict Dynamics with JAX
+------------------------------------
+
+We use `JAX <https://github.com/google/jax>`_ for implementation of the computationally intensive part. The polycrystal structure is generated with `Neper <https://neper.info/>`_. 
+
+Why JAX? We believe JAX is an exciting tool for scientific simulations.  
+
+1. The code is in Python, and it runs on **CPU/GPU** with high performance.
+2. It is natural for research of **AI for science/engineering**, because JAX is intended for machine learning research.
+3. The automatic differentiation feature of JAX is useful for **design and optimization**.
+
+
 Contents
 --------
 
@@ -20,12 +56,15 @@ Contents
    :maxdepth: 1
    :caption: Contents:
 
-   usage
+   quick_start
    equations
    pre-processing
    post-processing
+   gallery
+   FAQ
+   about
    api
-
+   usage
 
 Indices and tables
 ==================

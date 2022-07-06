@@ -60,7 +60,8 @@ def phase_field(polycrystal):
 
         zeta = 0.5 * (1 - np.tanh(1e1*(T/args['T_melt'] - 1)))
         local_energy_grad = local_energy_grad_fn(eta, zeta) / args['ad_hoc']
-        # TODO: concatenate may be slow, any workaround?
+        # Make the code concise
+        # https://github.com/google/jax-cfd/blob/8eff9c47bdc7fb19b6453db94ca65f6be64d91f6/jax_cfd/base/finite_differences.py#L74
         eta_xyz = np.reshape(eta, (args['Nz'], args['Ny'], args['Nx'], args['num_oris']))
         eta_neg_x = np.concatenate((eta_xyz[:, :, :1, :], eta_xyz[:, :, :-1, :]), axis=2)
         eta_pos_x = np.concatenate((eta_xyz[:, :, 1:, :], eta_xyz[:, :, -1:, :]), axis=2)

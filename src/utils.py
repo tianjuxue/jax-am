@@ -30,6 +30,7 @@ class Field:
         grain_oris_inds = onp.random.randint(args['num_oris'], size=args['num_grains'])
         cell_ori_inds = onp.take(grain_oris_inds, cell_grain_inds, axis=0)
 
+        # TODO: Not robust
         Nx = round(args['domain_x'] / points[1, 0])
         Ny = round(args['domain_y'] / points[Nx + 1, 1])
         Nz = round(args['domain_z'] / points[(Nx + 1)*(Ny + 1), 2])
@@ -218,7 +219,7 @@ def read_path():
     traveled_time = args['laser_path']['time']
     x_corners = args['laser_path']['x_pos']
     y_corners = args['laser_path']['y_pos']
-    power_control = args['laser_path']['switch']
+    power_control = args['laser_path']['switch'][:-1]
 
     ts, xs, ys, ps = [], [], [], []
     for i in range(len(traveled_time) - 1):

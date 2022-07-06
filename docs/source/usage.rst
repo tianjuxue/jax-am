@@ -2,8 +2,8 @@
 
    This is just a template! Page under contruction!
 
-Usage
-=====
+Template
+========
 
 .. _installation:
 

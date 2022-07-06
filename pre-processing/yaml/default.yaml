@@ -114,5 +114,5 @@ laser_path:
   time: [0., 0.0024]
   x_pos: [0.2, 0.8]
   y_pos: [0.1, 0.1]
-  switch: [1]
+  switch: [1, 0]
 

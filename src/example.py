@@ -36,6 +36,8 @@ def generate_neper():
                 -o post-processing/neper/{args['case']}/domain -format tess,obj,ori''')
     os.system(f"neper -T -loadtess post-processing/neper/{args['case']}/domain.tess -statcell x,y,z,vol,facelist -statface x,y,z,area")
     os.system(f"neper -M -rcl 1 -elttype hex -faset faces post-processing/neper/{args['case']}/domain.tess")
+
+    # Optional, write the Neper files to local for visualization
     polycrystal = Field()
     polycrystal.write_vtu_files()
 
