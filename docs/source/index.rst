@@ -62,8 +62,8 @@ Contents
    post-processing
    gallery
    FAQ
-   about
    api
+   about
    usage
 
 Indices and tables
