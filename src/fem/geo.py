@@ -36,9 +36,9 @@ def gmsh_mesh(mesh_filepath):
 
     global_args['domain_x'] = domain_x
 
-    Nx = 50
-    Ny = 50
-    Nz = 50
+    Nx = 100
+    Ny = 100
+    Nz = 100
 
     hx = domain_x / Nx
     hy = domain_y / Ny
@@ -210,6 +210,32 @@ def fem_pre_computations(mesh):
         res = res.at[cells].add(weak_form)
         return res
 
+    def compute_residual_nonlinear(dofs):
+        """Assembly of weak form
+        """
+        # (num_cells, 1, num_nodes) * (1, num_quads, num_nodes) -> (num_cells, num_quads, num_nodes)
+        u_vals = np.take(dofs, cells)[:, None, :] * shape_vals[None, :, :] 
+        u_vals = np.sum(u_vals, axis=2, keepdims=True) # (num_cells, num_quads, 1)
+        q = (1 + u_vals**2)[:, :, :, None]
+        # (num_cells, 1, num_nodes, 1) * (1, num_quads, num_nodes, dim) -> (num_cells, num_quads, num_nodes, dim) 
+        u_grads = np.take(dofs, cells)[:, None, :, None] * shape_grads[None, :, :, :] 
+        u_grads = np.sum(u_grads, axis=2, keepdims=True) # (num_cells, num_quads, 1, dim) 
+        v_grads = shape_grads[None, :, :, :] # (1, num_quads, num_nodes, dim)
+        weak_form = np.sum(q * u_grads * v_grads * JxW, axis=(1, 3)) # (num_cells, num_nodes)
+        res = np.zeros_like(dofs)
+        res = res.at[cells].add(weak_form)
+
+        rhs = get_rhs()
+
+        return res - rhs
+
+    # def compute_residual_pre(dofs):
+    #     pass
+
+    # def get_stiffness_ij():
+    #     v_grads = np.repeat(shape_grads[None, ...], global_args['num_cells'], axis=0)  # (num_cells, num_quads, num_nodes, dim)
+
+
     def get_rhs():
         rhs = np.zeros(global_args['num_dofs'])
         v_vals = np.repeat(shape_vals[None, ...], global_args['num_cells'], axis=0) # (num_cells, num_quads, num_nodes)
@@ -226,12 +252,12 @@ def fem_pre_computations(mesh):
     shape_grads = get_shape_grads()
     rhs = get_rhs()
 
-    return compute_residual, rhs
+    return compute_residual_nonlinear, rhs
 
 
 def operator_to_matrix(operator_fn):
-    # TODO: nonlinear problems
-    J = jax.jacfwd(operator_fn)(np.zeros(args['num_nodes']))
+    # TODO
+    J = jax.jacfwd(operator_fn)(np.zeros(global_args['num_dofs']))
     return J
 
 
@@ -250,7 +276,7 @@ def apply_bc(res_fn, rhs, left_inds, right_inds):
     return A_fn, b
 
 
-def poisson_solver():
+def nonlinear_poisson():
     mesh = generate_domain()
 
     EPS = 1e-5
@@ -259,7 +285,51 @@ def poisson_solver():
 
     res_fn, rhs = fem_pre_computations(mesh)
     print("Done pre-computing")
- 
+
+    A_fn, b = apply_bc(res_fn, rhs, left_inds, right_inds)
+
+    def get_A_fn_linear_fn(sol):
+        def A_fn_linear_fn(inc):
+            primals, tangents = jax.jvp(A_fn, (sol,), (inc,))
+            return tangents
+        return A_fn_linear_fn
+
+
+    start = time.time()
+
+    sol = np.zeros(global_args['num_dofs'])
+    tol = 1e-6
+    res_val = 1.
+    
+    step = 0
+    while res_val > tol:
+        b = -A_fn(sol)
+        A_fn_linear = get_A_fn_linear_fn(sol)
+        inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
+        sol = sol + inc
+        res_val = np.linalg.norm(b)
+        print(f"step = {step}, res l_2 = {res_val}") 
+        step += 1
+
+    end = time.time()
+    print(f"Solve took {end - start}")
+
+    print(f"max of sol = {np.max(sol)}")
+
+    mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
+    mesh.write(f"post-processing/vtk/fem/sol.vtu")
+
+
+def poisson():
+    mesh = generate_domain()
+
+    EPS = 1e-5
+    left_inds = onp.argwhere(mesh.points[:, 0] < EPS).reshape(-1)
+    right_inds = onp.argwhere(mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1)
+
+    res_fn, rhs = fem_pre_computations(mesh)
+    print("Done pre-computing")
+
     A_fn, b = apply_bc(res_fn, rhs, left_inds, right_inds)
 
     for i in range(1):
@@ -278,4 +348,5 @@ def poisson_solver():
 
 if __name__ == "__main__":
     # generate_domain()
-    poisson_solver()
+    # poisson()
+    nonlinear_poisson()

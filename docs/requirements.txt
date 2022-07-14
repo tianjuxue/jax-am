@@ -28,3 +28,4 @@ jax[cpu]
 jaxopt
 meshio[all]
 orix
+gmsh
