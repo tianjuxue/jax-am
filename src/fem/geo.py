@@ -11,11 +11,11 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 onp.random.seed(0)
-onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True)
-onp.set_printoptions(precision=10)
+onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=3)
 
 global_args = {}
 global_args['dim'] = 3
+global_args['vec'] = 3
 global_args['num_quads'] = 8
 global_args['num_nodes'] = 8
 
@@ -36,9 +36,9 @@ def gmsh_mesh(mesh_filepath):
 
     global_args['domain_x'] = domain_x
 
-    Nx = 100
-    Ny = 100
-    Nz = 100
+    Nx = 50
+    Ny = 50
+    Nz = 50
 
     hx = domain_x / Nx
     hy = domain_y / Ny
@@ -229,19 +229,60 @@ def fem_pre_computations(mesh):
 
         return res - rhs
 
-    # def compute_residual_pre(dofs):
-    #     pass
+    # def get_rhs():
+    #     rhs = np.zeros(global_args['num_dofs'])
+    #     v_vals = np.repeat(shape_vals[None, ...], global_args['num_cells'], axis=0) # (num_cells, num_quads, num_nodes)
+    #     rhs_vals = np.sum(v_vals * body_force * JxW, axis=1).reshape(-1) # (num_cells, num_nodes) -> (num_cells*num_nodes)
+    #     rhs = rhs.at[cells.reshape(-1)].add(rhs_vals)   
+    #     return rhs
 
-    # def get_stiffness_ij():
-    #     v_grads = np.repeat(shape_grads[None, ...], global_args['num_cells'], axis=0)  # (num_cells, num_quads, num_nodes, dim)
+
+    def compute_residual_elasticity(dofs):
+        """
+
+        Parameters
+        ----------
+        dofs: ndarray
+            (num_nodes, vec) 
+        """
+        # (num_cells, 1, num_nodes, vec, 1) * (1, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
+        u_grads = np.take(dofs, cells, axis=0)[:, None, :, :, None] * shape_grads[None, :, :, None, :] 
+        u_grads = np.sum(u_grads, axis=2, keepdims=True) # (num_cells, num_quads, 1, vec, dim)   
+        stress =  compute_stress(u_grads) # (num_cells, num_quads, 1, vec, dim)  
+        v_grads = shape_grads[None, :, :, None, :] # (1, num_quads, num_nodes, vec, dim)
+        weak_form = np.sum(stress * v_grads * JxW, axis=(1, -1)).reshape(-1, global_args['vec'], order='F') # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+        res = np.zeros_like(dofs)
+        res = res.at[cells.reshape(-1, order='F')].add(weak_form)
+        return res 
 
 
-    def get_rhs():
-        rhs = np.zeros(global_args['num_dofs'])
-        v_vals = np.repeat(shape_vals[None, ...], global_args['num_cells'], axis=0) # (num_cells, num_quads, num_nodes)
-        rhs_vals = np.sum(v_vals * body_force * JxW, axis=1).reshape(-1) # (num_cells, num_nodes) -> (num_cells*num_nodes)
-        rhs = rhs.at[cells.reshape(-1)].add(rhs_vals)   
-        return rhs
+    def compute_stress(u_grads):
+        u_grads_reshape = u_grads.reshape(-1, global_args['vec'], global_args['dim'], order='F')
+
+        def strain(u_grad):
+            E = 100.
+            nu = 0.3
+            mu = E/(2.*(1. + nu))
+            lmbda = E*nu/((1+nu)*(1-2*nu))
+            eps = 0.5*(u_grad + u_grad.T)
+            sigma = lmbda*np.trace(eps)*np.eye(global_args['dim']) + 2*mu*eps
+            return sigma
+
+
+        # def strain(u_grad):
+        #     E = 100.
+        #     nu = 0.3
+        #     mu = E/(2.*(1. + nu))
+        #     lmbda = E*nu/((1+nu)*(1-2*nu))
+        #     eps = 0.5*(u_grad + u_grad.T)
+        #     sigma = lmbda*np.trace(eps)*np.eye(global_args['dim']) + 2*mu*eps
+        #     return u_grad
+
+
+        strain_vmap = jax.vmap(strain)
+        stress = strain_vmap(u_grads_reshape).reshape(u_grads.shape, order='F')
+        return stress
+
 
     cells = mesh.cells_dict['hexahedron'] 
     global_args['num_cells'] = len(cells)
@@ -250,43 +291,49 @@ def fem_pre_computations(mesh):
     JxW = get_JxW()
     shape_vals = get_shape_vals()
     shape_grads = get_shape_grads()
-    rhs = get_rhs()
+    # rhs = get_rhs()
 
-    return compute_residual_nonlinear, rhs
+    return compute_residual_elasticity, None
 
 
 def operator_to_matrix(operator_fn):
-    # TODO
-    J = jax.jacfwd(operator_fn)(np.zeros(global_args['num_dofs']))
+    J = jax.jacfwd(operator_fn)(np.zeros(global_args['num_dofs']*global_args['vec']))
     return J
 
 
-def apply_bc(res_fn, rhs, left_inds, right_inds):
+# TODO
+def apply_bc(res_fn, left_inds_x_nodes, left_inds_x_vec, right_inds_x_nodes, right_inds_x_vec, corner_inds_yz_nodes, corner_inds_yz_vec):
     def A_fn(dofs):
         """Apply B.C. conditions
         """
+        dofs = dofs.reshape(global_args['num_dofs'], global_args['vec'], order='F')
         res = res_fn(dofs)
-        res = res.at[left_inds].set(dofs[left_inds], unique_indices=True)
-        res = res.at[right_inds].set(dofs[right_inds], unique_indices=True)
-        return res
+        res = res.at[left_inds_x_nodes, left_inds_x_vec].set(dofs[left_inds_x_nodes, left_inds_x_vec], unique_indices=True)
+        res = res.at[right_inds_x_nodes, right_inds_x_vec].set(dofs[right_inds_x_nodes, right_inds_x_vec], unique_indices=True)
+        res = res.at[corner_inds_yz_nodes, corner_inds_yz_vec].set(dofs[corner_inds_yz_nodes, corner_inds_yz_vec], unique_indices=True)
+        res = res.at[left_inds_x_nodes, left_inds_x_vec].add(0.)
+        res = res.at[right_inds_x_nodes, right_inds_x_vec].add(-0.1)
+        return res.reshape(-1, order='F')
     
-    b = rhs.at[left_inds].set(0.)
-    b = b.at[right_inds].set(0.)
-
-    return A_fn, b
+    return A_fn
 
 
 def nonlinear_poisson():
     mesh = generate_domain()
 
     EPS = 1e-5
-    left_inds = onp.argwhere(mesh.points[:, 0] < EPS).reshape(-1)
-    right_inds = onp.argwhere(mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1)
+    left_inds_x_nodes = onp.argwhere(mesh.points[:, 0] < EPS).reshape(-1, order='F')
+    left_inds_x_vec = onp.zeros_like(left_inds_x_nodes)
+    right_inds_x_nodes = onp.argwhere(mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1, order='F')
+    right_inds_x_vec = onp.zeros_like(right_inds_x_nodes)
 
-    res_fn, rhs = fem_pre_computations(mesh)
+    corner_inds_yz_nodes = onp.array([0, 0])
+    corner_inds_yz_vec = onp.array([1, 2])
+
+    res_fn, _ = fem_pre_computations(mesh)
     print("Done pre-computing")
 
-    A_fn, b = apply_bc(res_fn, rhs, left_inds, right_inds)
+    A_fn = apply_bc(res_fn, left_inds_x_nodes, left_inds_x_vec, right_inds_x_nodes, right_inds_x_vec, corner_inds_yz_nodes, corner_inds_yz_vec)
 
     def get_A_fn_linear_fn(sol):
         def A_fn_linear_fn(inc):
@@ -297,35 +344,51 @@ def nonlinear_poisson():
 
     start = time.time()
 
-    sol = np.zeros(global_args['num_dofs'])
+    sol = np.zeros((global_args['num_dofs'], global_args['vec']))
+    sol = sol.at[right_inds_x_nodes, right_inds_x_vec].set(0.1)
+    sol = sol.reshape(-1, order='F')
+
     tol = 1e-6
     res_val = 1.
     
     step = 0
-    while res_val > tol:
+    # while res_val > tol:
+
+    if True:
         b = -A_fn(sol)
         A_fn_linear = get_A_fn_linear_fn(sol)
+
+        # A_dense = operator_to_matrix(A_fn_linear)
+        # print(np.linalg.cond(A_dense))
+        # print(np.max(A_dense))
+        # # print(A_dense)
+        # exit()
+
         inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
+
         sol = sol + inc
         res_val = np.linalg.norm(b)
         print(f"step = {step}, res l_2 = {res_val}") 
         step += 1
 
     end = time.time()
-    print(f"Solve took {end - start}")
+    print(f"Solve took {end - start} [s]")
 
     print(f"max of sol = {np.max(sol)}")
+    print(f"min of sol = {np.min(sol)}")
 
-    mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
+    mesh.point_data['sol'] = onp.array(sol.reshape((global_args['num_dofs'], global_args['vec']), order='F'), dtype=onp.float32)
     mesh.write(f"post-processing/vtk/fem/sol.vtu")
+
+    # print(mesh.point_data['sol'])
 
 
 def poisson():
     mesh = generate_domain()
 
     EPS = 1e-5
-    left_inds = onp.argwhere(mesh.points[:, 0] < EPS).reshape(-1)
-    right_inds = onp.argwhere(mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1)
+    left_inds = onp.argwhere(mesh.points[:, 0] < EPS).reshape(-1, order='F')
+    right_inds = onp.argwhere(mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1, order='F')
 
     res_fn, rhs = fem_pre_computations(mesh)
     print("Done pre-computing")
