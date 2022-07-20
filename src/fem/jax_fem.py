@@ -2,10 +2,9 @@ import numpy as onp
 import jax
 import jax.numpy as np
 import os
-import gmsh
-import meshio
 import sys
 import time
+from src.fem.generate_mesh import box_mesh, cylinder_mesh, global_args
 
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -13,57 +12,10 @@ config.update("jax_enable_x64", True)
 onp.random.seed(0)
 onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=3)
 
-global_args = {}
+
 global_args['dim'] = 3
 global_args['num_quads'] = 8
 global_args['num_nodes'] = 8
-
-
-def gmsh_mesh(Nx, Ny, Nz):
-    """References:
-    https://gitlab.onelab.info/gmsh/gmsh/-/blob/master/examples/api/hex.py
-    https://gitlab.onelab.info/gmsh/gmsh/-/blob/gmsh_4_7_1/tutorial/python/t1.py
-    https://gitlab.onelab.info/gmsh/gmsh/-/blob/gmsh_4_7_1/tutorial/python/t3.py
-    """
-    mesh_filepath = "post-processing/msh/domain.msh"
-    generate = True
-    if generate:
-        offset_x = 0.
-        offset_y = 0.
-        offset_z = 0.
-        domain_x = 1.
-        domain_y = 1.
-        domain_z = 1.
-
-        global_args['domain_x'] = domain_x
-        global_args['domain_y'] = domain_y
-        global_args['domain_z'] = domain_z
-
-        hx = domain_x / Nx
-        hy = domain_y / Ny
-        hz = domain_z / Nz
-
-        # Whay divided by two? Because we use [-1, 1] isoparametric elements
-        global_args['alpha'] = onp.array([hx/2., hy/2., hz/2.])
-
-        gmsh.initialize()
-        gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)  # save in old MSH format
-        Rec2d = True  # tris or quads
-        Rec3d = True  # tets, prisms or hexas
-        p = gmsh.model.geo.addPoint(offset_x, offset_y, offset_z)
-        l = gmsh.model.geo.extrude([(0, p)], domain_x, 0, 0, [Nx], [1])
-        s = gmsh.model.geo.extrude([l[1]], 0, domain_y, 0, [Ny], [1], recombine=Rec2d)
-        v = gmsh.model.geo.extrude([s[1]], 0, 0, domain_z, [Nz], [1], recombine=Rec3d)
-
-        gmsh.model.geo.synchronize()
-        gmsh.model.mesh.generate(3)
-        gmsh.write(mesh_filepath)
-        gmsh.finalize()
-      
-    mesh = meshio.read(mesh_filepath)
-    points = mesh.points # (num_total_vertices, dim)
-    cells =  mesh.cells_dict['hexahedron'] # (num_cells, num_nodes)
-    return mesh
 
 
 class FEM:
@@ -104,12 +56,7 @@ class FEM:
             shape_fns = get_shape_val_functions()
             return [jax.grad(f) for f in shape_fns]
 
-        def get_JxW():
-            """Pre-compute Jacobian * weight
-            In a more general case, this should return ndarray (num_cells, num_quads)
-            """
-            return np.prod(global_args['alpha'])
-
+        @jax.jit
         def get_shape_vals():
             """Pre-compute shape function values
 
@@ -133,13 +80,16 @@ class FEM:
             assert shape_vals.shape == (global_args['num_quads'], global_args['num_nodes'])
             return shape_vals
 
+        @jax.jit
         def get_shape_grads():
             """Pre-compute shape function gradients
 
             Returns
             -------
-            shape_grads: ndarray
-               (8, 8, 3) = (num_quads, num_nodes, dim)  
+            shape_grads_physical: ndarray
+                (cell, num_quads, num_nodes, dim)  
+            JxW: ndarray
+                (cell, num_quads)
             """
             shape_grad_fns = get_shape_grad_functions()
             quad_points = get_quad_points()
@@ -149,24 +99,34 @@ class FEM:
                 for shape_grad_fn in shape_grad_fns:
                     # See Hughes, Thomas JR. The finite element method: linear static and dynamic finite element analysis. Courier Corporation, 2012.
                     # Page 147, Eq. (3.9.3)
-                    physical_shape_grad = shape_grad_fn(quad_point) / global_args['alpha']
+                    physical_shape_grad = shape_grad_fn(quad_point)
                     physical_shape_grads.append(physical_shape_grad)
          
                 shape_grads.append(physical_shape_grads)
 
             shape_grads = np.array(shape_grads) # (num_quads, num_nodes, dim)
             assert shape_grads.shape == (global_args['num_quads'], global_args['num_nodes'], global_args['dim'])
-            return shape_grads
 
+            physical_coos = np.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
 
+            # (num_cells, num_quads, num_nodes, dim, dim) -> (num_cells, num_quads, 1, dim, dim)
+            jacobian_dx_deta = np.sum(physical_coos[:, None, :, :, None] * shape_grads[None, :, :, None, :], axis=2, keepdims=True)
+            jacbian_det = np.squeeze(np.linalg.det(jacobian_dx_deta)) # (num_cells, num_quads)
+            jacobian_deta_dx = np.linalg.inv(jacobian_dx_deta)
+            shape_grads_physical = np.sum(shape_grads[None, :, :, None, :] * jacobian_deta_dx, axis=3)
+
+            # For first order FEM with 8 quad points, those quad weights are all equal to one
+            quad_weights = 1.
+            JxW = jacbian_det * quad_weights
+            return shape_grads_physical, JxW
+
+        self.points = self.mesh.points
         self.cells = self.mesh.cells_dict['hexahedron'] 
         global_args['num_cells'] = len(self.cells)
         global_args['num_total_vertices'] = len(self.mesh.points)
-
-        self.JxW = get_JxW()
         self.shape_vals = get_shape_vals()
-        self.shape_grads = get_shape_grads()
-       
+        self.shape_grads, self.JxW = get_shape_grads()
+
         return self.compute_residual
 
 
@@ -182,12 +142,13 @@ class Laplace(FEM):
         dofs: ndarray
             (num_nodes, vec) 
         """
-        # (num_cells, 1, num_nodes, vec, 1) * (1, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
-        u_grads = np.take(dofs, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[None, :, :, None, :] 
+        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
+        u_grads = np.take(dofs, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads = np.sum(u_grads, axis=2, keepdims=True) # (num_cells, num_quads, 1, vec, dim)  
         u_physics = self.compute_physics(dofs, u_grads) # (num_cells, num_quads, 1, vec, dim)  
-        v_grads = self.shape_grads[None, :, :, None, :] # (1, num_quads, num_nodes, vec, dim)
-        weak_form = np.sum(u_physics * v_grads * self.JxW, axis=(1, -1)).reshape(-1, self.vec) # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+        v_grads = self.shape_grads[:, :, :, None, :] # (num_cells, num_quads, num_nodes, vec, dim)
+        # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+        weak_form = np.sum(u_physics * v_grads * self.JxW[:, :, None, None, None], axis=(1, -1)).reshape(-1, self.vec) 
         res = np.zeros_like(dofs)
         res = res.at[self.cells.reshape(-1)].add(weak_form)
         rhs = self.get_rhs()
@@ -226,7 +187,7 @@ class LinearPoisson(Laplace):
         rhs = np.zeros((global_args['num_total_vertices'], self.vec))
         v_vals = np.repeat(self.shape_vals[None, :, :, None], global_args['num_cells'], axis=0) # (num_cells, num_quads, num_nodes, 1)
         v_vals = np.repeat(v_vals, self.vec, axis=-1) # (num_cells, num_quads, num_nodes, vec)
-        rhs_vals = np.sum(v_vals * self.body_force * self.JxW, axis=1).reshape(-1, self.vec) # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+        rhs_vals = np.sum(v_vals * self.body_force * self.JxW[:, :, None, None], axis=1).reshape(-1, self.vec) # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
         rhs = rhs.at[self.cells.reshape(-1)].add(rhs_vals)   
         return rhs
 
@@ -284,38 +245,66 @@ class LinearElasticity(Laplace):
         stress = strain_vmap(u_grads_reshape).reshape(u_grads.shape)
         return stress
 
-    # def get_boundary_idx(self):
-    #     EPS = 1e-5
-    #     left_inds_x_nodes = onp.argwhere(self.mesh.points[:, 0] < EPS).reshape(-1)
-    #     left_inds_x_vec = onp.zeros_like(left_inds_x_nodes)
-    #     right_inds_x_nodes = onp.argwhere(self.mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1)
-    #     right_inds_x_vec = onp.zeros_like(right_inds_x_nodes)
-    #     corner_inds_yz_nodes = onp.array([0, 0])
-    #     corner_inds_yz_vec = onp.array([1, 2])
-    #     inds_nodes_list = [left_inds_x_nodes, right_inds_x_nodes, corner_inds_yz_nodes]
-    #     inds_vec_list = [left_inds_x_vec, right_inds_x_vec, corner_inds_yz_vec]
-    #     vals_list = [0., 0.1, 0.]
-    #     return inds_nodes_list, inds_vec_list, vals_list
+    def get_boundary_idx_free_tensile(self):
+        """Alternative boundary conditions
+        """
+        EPS = 1e-5
+        left_inds_x_nodes = onp.argwhere(self.mesh.points[:, 0] < EPS).reshape(-1)
+        left_inds_x_vec = onp.zeros_like(left_inds_x_nodes)
+        right_inds_x_nodes = onp.argwhere(self.mesh.points[:, 0] >  global_args['domain_x'] - EPS).reshape(-1)
+        right_inds_x_vec = onp.zeros_like(right_inds_x_nodes)
+        corner_inds_yz_nodes = onp.array([0, 0])
+        corner_inds_yz_vec = onp.array([1, 2])
+        inds_nodes_list = [left_inds_x_nodes, right_inds_x_nodes, corner_inds_yz_nodes]
+        inds_vec_list = [left_inds_x_vec, right_inds_x_vec, corner_inds_yz_vec]
+        vals_list = [0., 0.1, 0.]
+        return inds_nodes_list, inds_vec_list, vals_list
   
 
     def get_boundary_idx(self):
         # TODO
         EPS = 1e-5
-        domains = ['domain_x', 'domain_y', 'domain_z']
-
         inds_nodes_list = []
         inds_vec_list = []
         inds = [0, 1, 2]
-        for i, domain in enumerate(domains):
+        for i in range(len(inds)):
             left_inds_nodes = onp.argwhere(self.mesh.points[:, 0] < EPS).reshape(-1)
             left_inds_vec = onp.ones_like(left_inds_nodes, dtype=np.int32)*inds[i]
-            right_inds_nodes = onp.argwhere(self.mesh.points[:, 0] > global_args[domain] - EPS).reshape(-1)
+            right_inds_nodes = onp.argwhere(self.mesh.points[:, 0] > global_args['domain_x'] - EPS).reshape(-1)
             right_inds_vec = onp.ones_like(right_inds_nodes, dtype=np.int32)*inds[i]
             inds_nodes_list += [left_inds_nodes, right_inds_nodes]
             inds_vec_list += [left_inds_vec, right_inds_vec]
 
-        vals_list = [0., 0.1, 0., 0., 0., 0.]
+        vals_list = [0., 0.1, 0., 0., 0., 0.] # left_x, right_x, left_y, right_y, left_z, right_z
         return inds_nodes_list, inds_vec_list, vals_list
+
+
+class LinearElasticityCylinder(LinearElasticity):
+    def __init__(self, mesh):
+        super().__init__(mesh)
+        self.name = 'linear_elasticity_cylinder'
+ 
+
+    def get_boundary_idx(self):
+        # TODO
+        EPS = 1e-5
+ 
+        inds_nodes_list = []
+        inds_vec_list = []
+        inds = [0, 1, 2]
+        H = 10.
+        for i in range(len(inds)):
+            bottom_inds_nodes = onp.argwhere(self.mesh.points[:, 2] < EPS).reshape(-1)
+            bottom_inds_vec = onp.ones_like(bottom_inds_nodes, dtype=np.int32)*inds[i]
+            up_inds_nodes = onp.argwhere(self.mesh.points[:, 2] > H - EPS).reshape(-1)
+            up_inds_vec = onp.ones_like(up_inds_nodes, dtype=np.int32)*inds[i]
+            inds_nodes_list += [bottom_inds_nodes, up_inds_nodes]
+            inds_vec_list += [bottom_inds_vec, up_inds_vec]
+
+        vals_list = [0., 0., 0., 0., 0., 1.] # bottom_x, up_x, bottom_y, up_y, bottom_z, up_z
+        return inds_nodes_list, inds_vec_list, vals_list
+
+
 
 
 def solver(problem):
@@ -369,7 +358,6 @@ def solver(problem):
     res_val = np.linalg.norm(b)
     print(f"step = {step}, res l_2 = {res_val}") 
     while res_val > tol:
-        
         A_fn_linear = get_A_fn_linear_fn(sol)
         debug = False
         if debug:
@@ -397,18 +385,26 @@ def solver(problem):
     return solve_time
 
 
-def performance_test():
-    Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]
-    # Problems = [LinearElasticity]
+def debug():
+    # mesh = box_mesh(10, 20, 30)
+    # problem = LinearElasticity(mesh)
+    mesh = cylinder_mesh()
+    problem = LinearElasticityCylinder(mesh)
+    st = solver(problem)
 
-    Ns = [25, 50, 100]
-    # Ns = [10]
+
+def performance_test():
+    # Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]
+    Problems = [LinearElasticity]
+
+    # Ns = [25, 50, 100]
+    Ns = [10]
 
     solve_time = []
     for Problem in Problems:
         prob_time = []
         for N in Ns:
-            mesh = gmsh_mesh(N, N, N)
+            mesh = box_mesh(N, N, N)
             problem = Problem(mesh)
             st = solver(problem)
             prob_time.append(st)
@@ -421,5 +417,6 @@ def performance_test():
 
 
 if __name__ == "__main__":
-    # gmsh_mesh()
-    performance_test()
+    # box_mesh()
+    # performance_test()
+    debug()
