@@ -150,16 +150,15 @@ def linear_elasticity(N):
 
 
 def linear_elasticity_cylinder():
-    mesh = cylinder_mesh()
+    meshio_mesh = cylinder_mesh()
     cell_type = 'hexahedron'
-    cells = mesh.get_cells_type(cell_type)
-    out_mesh = meshio.Mesh(points=mesh.points, cells={cell_type: cells})
+    cells = meshio_mesh.get_cells_type(cell_type)
+    out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
     xdmf_file = f"post-processing/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
-    mesh = mesh_xdmf_file.read_mesh(name="Grid")
+    msh = mesh_xdmf_file.read_mesh(name="Grid")
 
-    exit()
 
     L = 1
     E = 100.
@@ -167,27 +166,64 @@ def linear_elasticity_cylinder():
     mu = E/(2.*(1. + nu))
     lmbda = E*nu/((1+nu)*(1-2*nu))
 
-    msh = mesh.create_box(MPI.COMM_WORLD, [np.array([0,0,0]), np.array([L, L, L])],
-                      [N,N,N], cell_type=mesh.CellType.hexahedron)
+    H = 10.
+    R = 5.
+ 
+
+    # msh = mesh.create_box(MPI.COMM_WORLD, [np.array([0,0,0]), np.array([L, L, L])],
+    #                   [10,10,10], cell_type=mesh.CellType.hexahedron)
+
+
+
+
     V = fem.VectorFunctionSpace(msh, ("CG", 1))
 
 
-    def boundary_left(x):
-        return np.isclose(x[0], 0)
+    def boundary_top(x):
+        # H = 10.
+        return np.isclose(x[2], H)
 
-    def boundary_right(x):
-        return np.isclose(x[0], L)
+    def boundary_bottom(x):
+        return np.isclose(x[2], 0.)
 
     fdim = msh.topology.dim - 1
-    boundary_facets_left = mesh.locate_entities_boundary(msh, fdim, boundary_left)
-    boundary_facets_right = mesh.locate_entities_boundary(msh, fdim, boundary_right)
+    boundary_facets_top = mesh.locate_entities_boundary(msh, fdim, boundary_top)
+    boundary_facets_bottom = mesh.locate_entities_boundary(msh, fdim, boundary_bottom)
 
-    u_left = np.array([0,0,0], dtype=ScalarType)
-    bc_left = fem.dirichletbc(u_left, fem.locate_dofs_topological(V, fdim, boundary_facets_left), V)
 
-    u_right = np.array([0.1,0,0], dtype=ScalarType)
-    bc_right = fem.dirichletbc(u_right, fem.locate_dofs_topological(V, fdim, boundary_facets_right), V)
+ 
+    marked_facets = boundary_facets_top
+    marked_values = np.full(len(boundary_facets_top), 2, dtype=np.int32) 
+    sorted_facets = np.argsort(marked_facets)
+    facet_tag = dolfinx.mesh.meshtags(msh, fdim, boundary_facets_top[sorted_facets], marked_values[sorted_facets])
 
+    metadata = {"quadrature_degree": 2, "quadrature_scheme": "default"}
+    ds = ufl.Measure('ds', domain=msh, subdomain_data=facet_tag, metadata=metadata)
+
+
+
+
+    # uh = fem.Function(V)
+    # uh.x.array[:] = 1.
+    # a = fem.assemble_scalar(fem.form(uh[0]*ds(2)))
+    # print(a)
+    # uh.x.array[:] = 0
+    # for i in range(len(uh.x.array)):
+    #     uh.x.array[i] = 1
+    #     tmp = fem.assemble_scalar(fem.form(uh[2]*ds(2)))
+    #     if tmp > 0:
+    #         print(f"At {i} step, tmp = {tmp}")
+    #     uh.x.array[i] = 0
+    # exit()
+
+
+    u_top = np.array([0, 0, 1], dtype=ScalarType)
+    bc_top = fem.dirichletbc(u_top, fem.locate_dofs_topological(V, fdim, boundary_facets_top), V)
+ 
+
+    u_bottom = np.array([0, 0, 0], dtype=ScalarType)
+    bc_bottom = fem.dirichletbc(u_bottom, fem.locate_dofs_topological(V, fdim, boundary_facets_bottom), V)
+ 
 
     def epsilon(u):
         return ufl.sym(ufl.grad(u)) # Equivalent to 0.5*(ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
@@ -197,11 +233,12 @@ def linear_elasticity_cylinder():
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
     f = fem.Constant(msh, ScalarType((0, 0, 0)))
+    t = fem.Constant(msh, ScalarType((1, 0, 0)))
     a = ufl.inner(sigma(u), epsilon(v)) * ufl.dx
-    L = ufl.dot(f, v) * ufl.dx
+    L = ufl.dot(f, v) * ufl.dx + ufl.dot(t, v) * ds(2)
 
     # problem = fem.petsc.LinearProblem(a, L, bcs=[bc_left, bc_right], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
-    problem = fem.petsc.LinearProblem(a, L, bcs=[bc_left, bc_right], petsc_options={"ksp_type": "bicg", "pc_type": "none"})
+    problem = fem.petsc.LinearProblem(a, L, bcs=[bc_bottom], petsc_options={"ksp_type": "bicg", "pc_type": "none"})
 
     start_time = time.time()
     uh = problem.solve()
@@ -212,10 +249,10 @@ def linear_elasticity_cylinder():
     print(f"max of sol = {np.max(uh.x.array)}")
     print(f"min of sol = {np.min(uh.x.array)}") 
 
-    file = io.XDMFFile(msh.comm, "post-processing/vtk/fem/fenicsx_linear_elasticity.xdmf", "w")  
+    file = io.XDMFFile(msh.comm, "post-processing/vtk/fem/fenicsx_linear_elasticity_cylinder.xdmf", "w")  
     file.write_mesh(msh)
     file.write_function(uh, 0) 
-
+ 
     return solve_time
 
 
