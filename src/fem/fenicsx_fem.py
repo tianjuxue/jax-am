@@ -112,7 +112,17 @@ def linear_elasticity(N):
     boundary_facets_left = mesh.locate_entities_boundary(msh, fdim, boundary_left)
     boundary_facets_right = mesh.locate_entities_boundary(msh, fdim, boundary_right)
 
-    u_left = np.array([0,0,0], dtype=ScalarType)
+
+
+    marked_facets = boundary_facets_right
+    marked_values = np.full(len(boundary_facets_right), 2, dtype=np.int32) 
+    sorted_facets = np.argsort(marked_facets)
+    facet_tag = dolfinx.mesh.meshtags(msh, fdim, boundary_facets_right[sorted_facets], marked_values[sorted_facets])
+    metadata = {"quadrature_degree": 2, "quadrature_scheme": "default"}
+    ds = ufl.Measure('ds', domain=msh, subdomain_data=facet_tag, metadata=metadata)
+
+
+    u_left = np.array([1.,1.,1.], dtype=ScalarType)
     bc_left = fem.dirichletbc(u_left, fem.locate_dofs_topological(V, fdim, boundary_facets_left), V)
 
     u_right = np.array([0.1,0,0], dtype=ScalarType)
@@ -126,12 +136,14 @@ def linear_elasticity(N):
 
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
-    f = fem.Constant(msh, ScalarType((0, 0, 0)))
+    f = fem.Constant(msh, ScalarType((0, 10., 10.)))
+    t = fem.Constant(msh, ScalarType((10., 0., 0.)))
     a = ufl.inner(sigma(u), epsilon(v)) * ufl.dx
-    L = ufl.dot(f, v) * ufl.dx
+    L = ufl.dot(f, v) * ufl.dx + ufl.dot(t, v) * ds(2)
+
 
     # problem = fem.petsc.LinearProblem(a, L, bcs=[bc_left, bc_right], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
-    problem = fem.petsc.LinearProblem(a, L, bcs=[bc_left, bc_right], petsc_options={"ksp_type": "bicg", "pc_type": "none"})
+    problem = fem.petsc.LinearProblem(a, L, bcs=[bc_left], petsc_options={"ksp_type": "bicg", "pc_type": "none"})
 
     start_time = time.time()
     uh = problem.solve()
@@ -277,7 +289,8 @@ def performance_test():
 
 
 def debug():
-    linear_elasticity_cylinder()
+    # linear_elasticity_cylinder()
+    linear_elasticity(10)
 
 if __name__ == "__main__":
     # performance_test()

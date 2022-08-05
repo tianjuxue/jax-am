@@ -9,8 +9,31 @@ plt.rcParams.update({
     "font.sans-serif": ["Helvetica"]})
 
 
-def run():
+def performance_test():
+    # Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]
+    Problems = [LinearElasticity]
 
+    # Ns = [25, 50, 100]
+    Ns = [10]
+
+    solve_time = []
+    for Problem in Problems:
+        prob_time = []
+        for N in Ns:
+            mesh = box_mesh(N, N, N)
+            problem = Problem(mesh)
+            st = solver(problem)
+            prob_time.append(st)
+        solve_time.append(prob_time)
+    
+    solve_time = onp.array(solve_time)
+    platform = jax.lib.xla_bridge.get_backend().platform
+    onp.savetxt(f"post-processing/txt/jax_fem_{platform}_time.txt", solve_time, fmt='%.3f')
+    print(solve_time)
+
+
+
+def run():
     fenicsx_time_np_1 = np.loadtxt(f"post-processing/txt/fenicsx_fem_time_mpi_np_1.txt")
     fenicsx_time_np_2 = np.loadtxt(f"post-processing/txt/fenicsx_fem_time_mpi_np_2.txt")
     fenicsx_time_np_4 = np.loadtxt(f"post-processing/txt/fenicsx_fem_time_mpi_np_4.txt")
