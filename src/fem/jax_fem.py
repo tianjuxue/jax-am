@@ -10,6 +10,8 @@ from functools import partial
 import gc
 from src.fem.generate_mesh import box_mesh, cylinder_mesh, global_args
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -218,9 +220,7 @@ class FEM:
                 face_shape_grads.append(f_shape_grads)
 
             face_shape_grads = np.array(face_shape_grads) # (num_faces, num_face_quads, num_nodes, dim)
-
             physical_coos = np.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
-
             # (num_cells, num_faces, num_face_quads, num_nodes, dim, dim) -> (num_cells, num_faces, num_face_quads, dim, dim)
             jacobian_dx_deta = np.sum(physical_coos[:, None, None, :, :, None] * face_shape_grads[None, :, :, :, None, :], axis=3)
             jacobian_det = np.linalg.det(jacobian_dx_deta) # (num_cells, num_faces, num_face_quads)
@@ -475,6 +475,21 @@ class LinearElasticity(Laplace):
         return stress
 
 
+class HyperElasticity(Laplace):
+    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+        self.name = name
+        self.vec = 3
+        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+
+
+class Plasticity(Laplace):
+    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+        self.name = name
+        self.vec = 3
+        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+
+
+
 def solver(problem):
     def operator_to_matrix(operator_fn):
         J = jax.jacfwd(operator_fn)(np.zeros(global_args['num_total_vertices']*problem.vec))
@@ -686,9 +701,9 @@ def linear_elasticity():
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[right], [neumann_val]]
 
-    dirichlet_bc_info = [[left, right], [0, 0], [zero_dirichlet_val, dirichlet_val]]
-    neumann_bc_info = None
-    body_force = None
+    # dirichlet_bc_info = [[left, right], [0, 0], [zero_dirichlet_val, dirichlet_val]]
+    # neumann_bc_info = None
+    # body_force = None
 
     problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info, body_force)
     solve_time = solver(problem)

@@ -24,7 +24,7 @@ def set_params():
     # args['ad_hoc'] = 0.1
 
 
-def generate_neper():
+def pre_processing():
     '''
     We use Neper to generate polycrystal structure.
     Neper has two major functions: generate a polycrystal structure, and mesh it.
@@ -48,6 +48,14 @@ def run():
     solver.solve()
 
 
+def post_processing():
+    set_params()
+    polycrystal = Field()
+    cell_ori_inds_3D = polycrystal.convert_to_3D_images()
+
+
 if __name__ == "__main__":
-    # generate_neper()
-    run()
+    # pre_processing()
+    # run()
+    post_processing()
+

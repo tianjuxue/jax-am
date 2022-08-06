@@ -16,6 +16,8 @@ from src.yaml_parse import args
 
 
 class Field:
+    """TODO(Tianju): this Field class is in a mess
+    """
     def __init__(self):
         filepath = f"post-processing/neper/{args['case']}/domain.msh"
         mesh = meshio.read(filepath)
@@ -138,6 +140,22 @@ class Field:
         mesh = meshio.Mesh(points, cells)
         return mesh
 
+
+    def convert_to_3D_images(self):
+        step = 0
+        filepath = f"post-processing/vtk/{args['case']}/pf/sols/u{step:03d}.vtu"     
+        mesh_w_data = meshio.read(filepath)
+        cell_ori_inds = mesh_w_data.cell_data['ori_inds'][0] 
+
+        # By default, numpy uses order='C'
+        cell_ori_inds_3D = np.reshape(cell_ori_inds, (args['Nz'], args['Ny'], args['Nx']))
+
+        # This should also work
+        # cell_ori_inds_3D = np.reshape(cell_ori_inds, (args['Nx'], args['Nz'], args['Ny']), order='F')
+
+        print(cell_ori_inds_3D.shape)
+        return cell_ori_inds_3D
+       
 
 def get_unique_ori_colors():
     '''
