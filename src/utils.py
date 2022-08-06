@@ -151,7 +151,7 @@ class Field:
         cell_ori_inds_3D = np.reshape(cell_ori_inds, (args['Nz'], args['Ny'], args['Nx']))
 
         # This should also work
-        # cell_ori_inds_3D = np.reshape(cell_ori_inds, (args['Nx'], args['Nz'], args['Ny']), order='F')
+        # cell_ori_inds_3D = np.reshape(cell_ori_inds, (args['Nx'], args['Ny'], args['Nz']), order='F')
 
         print(cell_ori_inds_3D.shape)
         return cell_ori_inds_3D
