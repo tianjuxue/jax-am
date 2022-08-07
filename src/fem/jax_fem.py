@@ -8,7 +8,7 @@ import meshio
 import matplotlib.pyplot as plt
 from functools import partial
 import gc
-from src.fem.generate_mesh import box_mesh, cylinder_mesh, global_args
+from src.fem.generate_mesh import box_mesh, cylinder_mesh
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
@@ -19,6 +19,7 @@ onp.random.seed(0)
 onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=5)
 
 
+global_args = {}
 global_args['dim'] = 3
 global_args['num_quads'] = 8
 global_args['num_nodes'] = 8
@@ -29,6 +30,7 @@ class Mesh():
     """A custom mesh manager might be better than just use third-party packages like meshio?
     """
     def __init__(self, points, cells):
+        # TODO: Assert that cells must have correct orders 
         self.points = points
         self.cells = cells
 
@@ -413,11 +415,6 @@ class Laplace(FEM):
                 integral = integral.at[subset_cells.reshape(-1)].add(int_vals)   
         return integral
 
-    def save_sol(self, sol):
-        out_mesh = meshio.Mesh(points=self.points, cells={'hexahedron': self.cells})
-        out_mesh.point_data['sol'] = onp.array(sol.reshape((global_args['num_total_vertices'], self.vec)), dtype=onp.float32)
-        out_mesh.write(f"post-processing/vtk/fem/jax_{self.name}.vtu")
-
 
 class LinearPoisson(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
@@ -463,6 +460,10 @@ class LinearElasticity(Laplace):
         u_grads: ndarray
             (num_cells, num_quads, vec, dim)
         """
+
+        # Remark: This is faster than double vmap by reducing ~30% computing time
+        u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])
+
         def strain(u_grad):
             E = 100.
             nu = 0.3
@@ -471,7 +472,9 @@ class LinearElasticity(Laplace):
             eps = 0.5*(u_grad + u_grad.T)
             sigma = lmbda*np.trace(eps)*np.eye(global_args['dim']) + 2*mu*eps
             return sigma
-        stress = jax.vmap(jax.vmap(strain))(u_grads)
+
+        strain_vmap = jax.vmap(strain)
+        stress = strain_vmap(u_grads_reshape).reshape(u_grads.shape)
         return stress
 
 
@@ -488,6 +491,13 @@ class Plasticity(Laplace):
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
 
+
+def save_sol(problem, sol, sol_file):
+    out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
+    out_mesh.point_data['sol'] = onp.array(sol.reshape((global_args['num_total_vertices'], problem.vec)), dtype=onp.float32)
+    # out_mesh.write(f"post-processing/vtk/fem/jax_{self.name}.vtu")
+
+    out_mesh.write(sol_file)
 
 
 def solver(problem):
@@ -560,76 +570,10 @@ def solver(problem):
     print(f"max of sol = {np.max(sol)}")
     print(f"min of sol = {np.min(sol)}")
 
-    problem.save_sol(sol)
-
-    return solve_time
-
-
-def test_surface_integral():
-    mesh = cylinder_mesh()
-    problem = FEM(mesh)
-    print(problem.face_inds)
-
-    # print(np.argwhere(problem.points[]))
- 
-    H = 10.
-    R = 5.
-    def top_boundary(x):
-        H = 10.
-        return np.isclose(x[2], H, atol=1e-5)
-
-    boundary_inds = problem.get_Neumman_boundary_inds(top_boundary)
-    area = np.sum(problem.face_scale[boundary_inds[:, 0], boundary_inds[:, 1]])
-    print(f"True area is {np.pi*R**2}")
-    print(f"FEM area is {area}")
+    return sol
 
 
 def debug():
-    mesh = cylinder_mesh()
-    cells = mesh.cells_dict['hexahedron'] 
-    points = mesh.points
-
-    # 0, 14 useless
-    points = np.vstack((points[1:14], points[15:]))
-    cells = onp.where(cells > 14, cells - 2, cells - 1)
-
-    mesh = Mesh(points, cells)
-
-    H = 10.
-    R = 5.
-
-    def top(point):
-        return np.isclose(point[2], H, atol=1e-5)
-
-    def bottom(point):
-        return np.isclose(point[2], 0., atol=1e-5)
-
-    def zero_val(point):
-        return 0.
-
-    def nonzero_val(point):
-        return 1.
-
-    def neumann_val(point):
-        return np.array([1., 0., 0.])
-
-    location_fns = [bottom, bottom, bottom]
-    value_fns = [zero_val, zero_val, zero_val]
-    vecs = [0, 1, 2]
-    dirichlet_bc_info = [location_fns, vecs, value_fns]
-
-    # location_fns = [bottom, bottom, bottom, top, top, top]
-    # value_fns = [zero_val, zero_val, zero_val, zero_val, zero_val, nonzero_val]
-    # vecs = [0, 1, 2, 0, 1, 2]
-    # dirichlet_bc_info = [location_fns, vecs, value_fns]
-
-    neumann_bc_info = [[top], [neumann_val]]
-
-    problem = LinearElasticity('linear_elasticity_cylinder', mesh, dirichlet_bc_info, neumann_bc_info)
-    solve_time = solver(problem)
-
-
-def linear_elasticity_cylinder():
     mesh = cylinder_mesh()
     cells = mesh.cells_dict['hexahedron'] 
     points = mesh.points
@@ -690,20 +634,23 @@ def linear_elasticity():
         return 0.
 
     def dirichlet_val(point):
-        return 1.
+        return 0.1
 
     def neumann_val(point):
         return np.array([10., 0., 0.])
 
     def body_force(point):
-        return np.array([0., 10., 10.])
+        return np.array([point[0], 2.*point[1], 3.*point[2]])
 
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[right], [neumann_val]]
 
-    # dirichlet_bc_info = [[left, right], [0, 0], [zero_dirichlet_val, dirichlet_val]]
-    # neumann_bc_info = None
-    # body_force = None
+    dirichlet_bc_info = [[left, left, left, right, right, right], 
+                         [0, 1, 2, 0, 1, 2], 
+                         [zero_dirichlet_val, zero_dirichlet_val, zero_dirichlet_val, 
+                          dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
+    neumann_bc_info = None
+    body_force = None
 
     problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info, body_force)
     solve_time = solver(problem)

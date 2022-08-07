@@ -3,8 +3,6 @@ import gmsh
 import numpy as onp
 import meshio
 
-# TODO: No global args
-global_args = {}
 
 def box_mesh(Nx, Ny, Nz):
     """References:
@@ -21,17 +19,6 @@ def box_mesh(Nx, Ny, Nz):
         domain_x = 1.
         domain_y = 1.
         domain_z = 1.
-
-        global_args['domain_x'] = domain_x
-        global_args['domain_y'] = domain_y
-        global_args['domain_z'] = domain_z
-
-        hx = domain_x / Nx
-        hy = domain_y / Ny
-        hz = domain_z / Nz
-
-        # Whay divided by two? Because we use [-1, 1] isoparametric elements
-        global_args['alpha'] = onp.array([hx/2., hy/2., hz/2.])
 
         gmsh.initialize()
         gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)  # save in old MSH format
@@ -56,8 +43,8 @@ def box_mesh(Nx, Ny, Nz):
 def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
     """By Xinxin Wu at PKU in July, 2022
     Reference: https://www.researchgate.net/post/How_can_I_create_a_structured_mesh_using_a_transfinite_volume_in_gmsh
-    R:radius
-    H:hight
+    R: radius
+    H: hight
     circle_mesh:num of meshs in circle lines
     hight_mesh:num of meshs in hight
     rect_ratio: rect length/R
