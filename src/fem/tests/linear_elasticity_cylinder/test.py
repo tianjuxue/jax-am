@@ -64,6 +64,7 @@ class Test(unittest.TestCase):
         onptest.assert_array_almost_equal(fenicsx_sol, jax_fem_sol, decimal=4)
 
 
+    # @unittest.skip("Temporarily skip")
     def test_surface_integral(self):
         """Compute the top surface area of the cylinder with FEniCSx and JAX-FEM
         """
@@ -76,9 +77,13 @@ class Test(unittest.TestCase):
 
         neumann_bc_info = [[top], [neumann_val]]
         problem = LinearElasticity('linear_elasticity_cylinder', Test.mesh, None, neumann_bc_info)
-        boundary_inds_list, _ = problem.Neuman_boundary_conditions()
-        boundary_inds = boundary_inds_list[0]
-        jax_fem_area = np.sum(problem.face_scale[boundary_inds[:, 0], boundary_inds[:, 1]])
+        dofs = np.zeros((len(problem.mesh.points), problem.vec))
+
+        jax_fem_area = problem.surface_integral(top, None, dofs)[0]
+
+        # boundary_inds_list, _ = problem.Neuman_boundary_conditions()
+        # boundary_inds = boundary_inds_list[0]
+        # jax_fem_area = np.sum(problem.face_scale[boundary_inds[:, 0], boundary_inds[:, 1]])
         print(f"Circle area is {np.pi*Test.R**2}")
         print(f"FEniCSx computes approximate area to be {fenicsx_surface_area}")
         print(f"JAX-FEM computes approximate area to be {jax_fem_area}")

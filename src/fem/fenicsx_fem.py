@@ -165,6 +165,128 @@ def linear_elasticity(N):
     return solve_time
 
 
+
+
+def plasticity():
+    meshio_mesh = cylinder_mesh()
+    cell_type = 'hexahedron'
+    cells = meshio_mesh.get_cells_type(cell_type)
+    out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
+    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    out_mesh.write(xdmf_file)
+    mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
+    msh = mesh_xdmf_file.read_mesh(name="Grid")
+    E = 70e3
+    nu = 0.3
+    mu = E/(2.*(1. + nu))
+    lmbda = E*nu/((1+nu)*(1-2*nu))
+    sig0 = 250.
+
+    H = 10.
+
+    deg_stress = 2
+    metadata = {"quadrature_degree": deg_stress, "quadrature_scheme": "default"}
+ 
+    W_ele = ufl.TensorElement("Quadrature", msh.ufl_cell(), degree=deg_stress, quad_scheme='default')
+    W = fem.FunctionSpace(msh, W_ele)
+    V = fem.VectorFunctionSpace(msh, ("CG", 1))
+
+    def boundary_top(x):
+        # H = 10.
+        return np.isclose(x[2], H)
+
+    def boundary_bottom(x):
+        return np.isclose(x[2], 0.)
+
+    fdim = msh.topology.dim - 1
+    boundary_facets_top = mesh.locate_entities_boundary(msh, fdim, boundary_top)
+    boundary_facets_bottom = mesh.locate_entities_boundary(msh, fdim, boundary_bottom)
+
+    marked_facets = boundary_facets_top
+    marked_values = np.full(len(boundary_facets_top), 2, dtype=np.int32) 
+    sorted_facets = np.argsort(marked_facets)
+    facet_tag = dolfinx.mesh.meshtags(msh, fdim, boundary_facets_top[sorted_facets], marked_values[sorted_facets])
+
+
+    ds = ufl.Measure('ds', domain=msh, subdomain_data=facet_tag, metadata=metadata)
+    dxm = ufl.Measure('dx', domain=msh, metadata=metadata)
+
+    u_top = np.array([0, 0, 1.], dtype=ScalarType)
+    bc_top = fem.dirichletbc(u_top, fem.locate_dofs_topological(V, fdim, boundary_facets_top), V)
+ 
+
+    u_bottom = np.array([0, 0, 0], dtype=ScalarType)
+    bc_bottom = fem.dirichletbc(u_bottom, fem.locate_dofs_topological(V, fdim, boundary_facets_bottom), V)
+ 
+
+    def epsilon(u):
+        return ufl.sym(ufl.grad(u)) # Equivalent to 0.5*(ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
+
+    def elastic_stress(u):
+        return lmbda * ufl.nabla_div(u) * ufl.Identity(u.geometric_dimension()) + 2*mu*epsilon(u)
+
+    sig = fem.Function(W)
+
+    ppos = lambda x: (x + abs(x))/2.
+
+    heaviside = lambda x: ufl.conditional(ufl.gt(x, 0.), x, 1e-10)
+
+    def stress_fn(u_crt, u_old):
+        EPS = 1e-10
+        sig_elas = sig + elastic_stress(u_crt - u_old)
+        s = ufl.dev(sig_elas)
+        sig_eq = ufl.sqrt(heaviside(3/2.*ufl.inner(s, s)))
+        f_elas = sig_eq - sig0
+        # Prevent divided by zero error
+        # The original example (https://comet-fenics.readthedocs.io/en/latest/demo/2D_plasticity/vonMises_plasticity.py.html)
+        # didn't consider this, and can cause nan error in the solver.
+        new_sig = sig_elas - ppos(f_elas)*s/(sig_eq + EPS)
+        return new_sig
+
+    x = ufl.SpatialCoordinate(msh)
+    u_crt = fem.Function(V)
+    u_old = fem.Function(V)
+    v = ufl.TestFunction(V)
+    F_res = ufl.inner(stress_fn(u_crt, u_old), epsilon(v)) * dxm
+
+
+    problem = dolfinx.fem.petsc.NonlinearProblem(F_res, u_crt, [bc_bottom, bc_top])
+    solver = dolfinx.nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
+
+    ksp = solver.krylov_solver
+    opts = petsc4py.PETSc.Options()
+    option_prefix = ksp.getOptionsPrefix()
+    opts[f"{option_prefix}ksp_type"] = "bicg"
+    opts[f"{option_prefix}pc_type"] = "none"
+    ksp.setFromOptions()
+    log.set_log_level(log.LogLevel.INFO)
+
+    start_time = time.time()
+    n, converged = solver.solve(u_crt)
+    end_time = time.time()
+
+
+    solve_time = end_time - start_time
+    print(f"Time elapsed {solve_time}")
+
+    print(f"max of sol = {np.max(u_crt.x.array)}")
+    print(f"min of sol = {np.min(u_crt.x.array)}") 
+
+    # file = io.VTKFile(msh.comm, "src/fem/tests/linear_elasticity_cylinder/fenicsx/sol.pvd", "w")  
+    # file.write_function(u_crt, 0) 
+
+    u_crt = fem.Function(V)
+    u_crt.x.array[:] = 1.
+    surface_area = fem.assemble_scalar(fem.form(u_crt[0]*ds(2)))
+
+    # np.save(f"src/fem/tests/linear_elasticity_cylinder/fenicsx/surface_area.npy", surface_area)
+
+    return solve_time
+
+
+
+
+
 def linear_elasticity_cylinder():
     meshio_mesh = cylinder_mesh()
     cell_type = 'hexahedron'
@@ -174,7 +296,6 @@ def linear_elasticity_cylinder():
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
-    L = 1
     E = 100.
     nu = 0.3
     mu = E/(2.*(1. + nu))
@@ -274,9 +395,10 @@ def performance_test():
 
 
 def debug():
-    linear_elasticity_cylinder()
+    # linear_elasticity_cylinder()
     # linear_elasticity(10)
     # linear_poisson(10)
+    plasticity()
 
 if __name__ == "__main__":
     # performance_test()
