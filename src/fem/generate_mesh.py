@@ -35,7 +35,7 @@ def box_mesh(Nx, Ny, Nz):
         gmsh.finalize()
       
     mesh = meshio.read(mesh_file)
-    points = mesh.points # (num_total_vertices, dim)
+    points = mesh.points # (num_total_nodes, dim)
     cells =  mesh.cells_dict['hexahedron'] # (num_cells, num_nodes)
     return mesh
 
@@ -110,7 +110,7 @@ def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
     os.system("gmsh -3 {geo_file} -o {mesh_file} -format msh2".format(geo_file=geo_file, mesh_file=mesh_file))
 
     mesh = meshio.read(mesh_file)
-    points = mesh.points # (num_total_vertices, dim)
+    points = mesh.points # (num_total_nodes, dim)
     cells =  mesh.cells_dict['hexahedron'] # (num_cells, num_nodes)
     # print(points[:10])
     # print(f"Number of total vertices = {len(points)}")

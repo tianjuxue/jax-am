@@ -9,6 +9,45 @@ plt.rcParams.update({
     "font.sans-serif": ["Helvetica"]})
 
 
+def linear_elasticity():
+    meshio_mesh = box_mesh(100, 100, 100)
+    mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
+    del meshio_mesh
+    gc.collect()
+
+    def left(point):
+        return np.isclose(point[0], 0., atol=1e-5)
+
+    def right(point):
+        return np.isclose(point[0], 1., atol=1e-5)
+
+    def zero_dirichlet_val(point):
+        return 0.
+
+    def dirichlet_val(point):
+        return 0.1
+
+    def neumann_val(point):
+        return np.array([10., 0., 0.])
+
+    def body_force(point):
+        return np.array([point[0], 2.*point[1], 3.*point[2]])
+
+    dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
+    neumann_bc_info = [[right], [neumann_val]]
+
+    dirichlet_bc_info = [[left, left, left, right, right, right], 
+                         [0, 1, 2, 0, 1, 2], 
+                         [zero_dirichlet_val, zero_dirichlet_val, zero_dirichlet_val, 
+                          dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
+    neumann_bc_info = None
+    body_force = None
+
+    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info, body_force)
+    sol = solver(problem)
+
+    
+
 def performance_test():
     # Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]
     Problems = [LinearElasticity]
