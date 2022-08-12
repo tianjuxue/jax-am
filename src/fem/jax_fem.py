@@ -19,15 +19,6 @@ onp.random.seed(0)
 onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=5)
 
 
-# TODO: eliminate all global variables
-global_args = {}
-global_args['dim'] = 3
-global_args['num_quads'] = 8
-global_args['num_nodes'] = 8
-global_args['num_faces'] = 6
-
-
-
 class Mesh():
     """A custom mesh manager might be better than just use third-party packages like meshio?
     """
@@ -44,15 +35,21 @@ class FEM:
         self.neumann_bc_info = neumann_bc_info
         self.source_info = source_info
 
-        #Many quantities can be pre-computed and stored for better performance.
         self.points = self.mesh.points
         self.cells = self.mesh.cells
+        self.dim = 3
+        self.num_quads = 8
+        self.num_nodes = 8
+        self.num_faces = 6
+        self.num_cells = len(self.cells)
+        self.num_total_nodes = len(self.mesh.points)
+
+        #Many quantities can be pre-computed and stored for better performance.
         self.shape_vals = self.get_shape_vals()
         self.shape_grads, self.JxW = self.get_shape_grads()
         self.face_shape_vals = self.get_face_shape_vals()
 
-        global_args['num_cells'] = len(self.cells)
-        global_args['num_total_nodes'] = len(self.mesh.points)
+        print(f"Done pre-computations")
 
     def get_shape_val_functions(self):
         """Hard-coded first order shape functions in the parent domain.
@@ -107,7 +104,7 @@ class FEM:
         face_quad_points = []
         face_normals = []
         face_extremes = np.array([-1., 1.])
-        for d in range(global_args['dim']):
+        for d in range(self.dim):
             for s in face_extremes:
                 s_quad_points = []
                 for i in range(face_quad_degree):
@@ -140,7 +137,7 @@ class FEM:
             shape_vals.append(physical_shape_vals)
 
         shape_vals = np.array(shape_vals)
-        assert shape_vals.shape == (global_args['num_quads'], global_args['num_nodes'])
+        assert shape_vals.shape == (self.num_quads, self.num_nodes)
         return shape_vals
 
     @partial(jax.jit, static_argnums=(0))
@@ -167,7 +164,7 @@ class FEM:
                 shape_grads_ref.append(shape_grad)
             shape_grads_reference.append(shape_grads_ref)
         shape_grads_reference = np.array(shape_grads_reference) # (num_quads, num_nodes, dim)
-        assert shape_grads_reference.shape == (global_args['num_quads'], global_args['num_nodes'], global_args['dim'])
+        assert shape_grads_reference.shape == (self.num_quads, self.num_nodes, self.dim)
 
         physical_coos = np.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
         # (num_cells, num_quads, num_nodes, dim, dim) -> (num_cells, num_quads, 1, dim, dim)
@@ -340,7 +337,7 @@ class FEM:
                                 [-1., 1., 1.]])
         face_inds = []
         face_extremes = np.array([-1., 1.])
-        for d in range(global_args['dim']):
+        for d in range(self.dim):
             for s in face_extremes:
                 face_inds.append(np.argwhere(np.isclose(node_points[:, d], s)).reshape(-1))
         face_inds = np.array(face_inds)
@@ -414,13 +411,13 @@ class Laplace(FEM):
     def compute_rhs(self):
         """Default
         """
-        rhs = np.zeros((global_args['num_total_nodes'], self.vec))
+        rhs = np.zeros((self.num_total_nodes, self.vec))
         if self.source_info is not None:
             body_force_fn = self.source_info
             physical_quad_points = self.get_physical_quad_points() # (num_cells, num_quads, dim) 
             body_force = jax.vmap(jax.vmap(body_force_fn))(physical_quad_points) # (num_cells, num_quads, vec) 
             assert len(body_force.shape) == 3
-            v_vals = np.repeat(self.shape_vals[None, :, :, None], global_args['num_cells'], axis=0) # (num_cells, num_quads, num_nodes, 1)
+            v_vals = np.repeat(self.shape_vals[None, :, :, None], self.num_cells, axis=0) # (num_cells, num_quads, num_nodes, 1)
             v_vals = np.repeat(v_vals, self.vec, axis=-1) # (num_cells, num_quads, num_nodes, vec)
             # (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
             rhs_vals = np.sum(v_vals * body_force[:, :, None, :] * self.JxW[:, :, None, None], axis=1).reshape(-1, self.vec) 
@@ -428,10 +425,10 @@ class Laplace(FEM):
         return rhs
 
     def compute_Neumann_integral(self):
-        integral = np.zeros((global_args['num_total_nodes'], self.vec))
+        integral = np.zeros((self.num_total_nodes, self.vec))
         if self.neumann_bc_info is not None:
             location_fns, value_fns = self.neumann_bc_info
-            integral = np.zeros((global_args['num_total_nodes'], self.vec))
+            integral = np.zeros((self.num_total_nodes, self.vec))
             boundary_inds_list = self.Neuman_boundary_conditions_inds(location_fns)
             traction_list = self.Neuman_boundary_conditions_vals(value_fns, boundary_inds_list)
             for i, boundary_inds in enumerate(boundary_inds_list):
@@ -506,7 +503,7 @@ class LinearElasticity(Laplace):
             mu = E/(2.*(1. + nu))
             lmbda = E*nu/((1+nu)*(1-2*nu))
             epsilon = 0.5*(u_grad + u_grad.T)
-            sigma = lmbda*np.trace(epsilon)*np.eye(global_args['dim']) + 2*mu*epsilon
+            sigma = lmbda*np.trace(epsilon)*np.eye(self.dim) + 2*mu*epsilon
             return sigma
 
         vmap_stress = jax.vmap(stress)
@@ -521,7 +518,7 @@ class LinearElasticity(Laplace):
             (num_cells, num_quads, vec, dim)
         """
         # Remark: This is faster than double vmap by reducing ~30% computing time
-        u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])
+        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
         vmap_stress = self.stress_strain_fns()
         sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
         return sigmas
@@ -556,7 +553,7 @@ class HyperElasticity(Laplace):
         P_fn = jax.grad(psi)
 
         def first_PK_stress(u_grad):
-            I = np.eye(global_args['dim'])
+            I = np.eye(self.dim)
             F = u_grad + I
             P = P_fn(F)
             return P
@@ -572,7 +569,7 @@ class HyperElasticity(Laplace):
             (num_cells, num_quads, vec, dim)
         """
         # Remark: This is faster than double vmap by reducing ~30% computing time
-        u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])
+        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
         vmap_stress = self.stress_strain_fns()
         sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
         return sigmas
@@ -588,12 +585,12 @@ class HyperElasticity(Laplace):
                 (num_selected_faces, num_face_quads, vec)
             """
             # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
-            u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
             vmap_stress = self.stress_strain_fns()
             sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
             # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
             # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
-            normals = np.array([0., 0., 1.]).reshape((global_args['dim'], 1))
+            normals = np.array([0., 0., 1.]).reshape((self.dim, 1))
             traction = (sigmas @ normals[None, None, :, :])[:, :, :, 0]
             return traction
 
@@ -607,7 +604,7 @@ class Plasticity(Laplace):
         self.name = name
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
-        self.epsilons_old = np.zeros((len(self.cells)*global_args['num_quads'], self.vec, global_args['dim']))
+        self.epsilons_old = np.zeros((len(self.cells)*self.num_quads, self.vec, self.dim))
         self.sigmas_old = np.zeros_like(self.epsilons_old)
 
     def stress_strain_fns(self):
@@ -627,7 +624,7 @@ class Plasticity(Laplace):
             nu = 0.3
             mu = E/(2.*(1. + nu))
             lmbda = E*nu/((1+nu)*(1-2*nu))
-            sigma = lmbda*np.trace(epsilon)*np.eye(global_args['dim']) + 2*mu*epsilon
+            sigma = lmbda*np.trace(epsilon)*np.eye(self.dim) + 2*mu*epsilon
             return sigma
 
         def stress_return_map(u_grad, sigma_old, epsilon_old):
@@ -636,7 +633,7 @@ class Plasticity(Laplace):
             epsilon_inc = epsilon_crt - epsilon_old
             sigma_trial = stress(epsilon_inc) + sigma_old
 
-            s_dev = sigma_trial - 1./global_args['dim']*np.trace(sigma_trial)*np.eye(global_args['dim'])
+            s_dev = sigma_trial - 1./self.dim*np.trace(sigma_trial)*np.eye(self.dim)
 
             # s_norm = np.sqrt(3./2.*np.sum(s_dev*s_dev))
             s_norm = safe_sqrt(3./2.*np.sum(s_dev*s_dev))
@@ -661,7 +658,7 @@ class Plasticity(Laplace):
         u_grads: ndarray
             (num_cells, num_quads, vec, dim)
         """
-        u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])
+        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
         _, vmap_stress_rm = self.stress_strain_fns()
         sigmas = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old).reshape(u_grads.shape)
         return sigmas
@@ -670,7 +667,7 @@ class Plasticity(Laplace):
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
         u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
-        u_grads_reshape = u_grads.reshape(-1, self.vec, global_args['dim'])  # (num_cells*num_quads, vec, dim)  
+        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)  # (num_cells*num_quads, vec, dim)  
         vmap_strain, vmap_stress_rm = self.stress_strain_fns()
         sigmas = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old).reshape(u_grads.shape)
         epsilons = vmap_strain(u_grads_reshape)
@@ -694,14 +691,14 @@ def save_sol(problem, sol, sol_file):
 
 def solver(problem, initial_guess=None, use_linearization_guess=True):
     def operator_to_matrix(operator_fn):
-        J = jax.jacfwd(operator_fn)(np.zeros(global_args['num_total_nodes']*problem.vec))
+        J = jax.jacfwd(operator_fn)(np.zeros(problem.num_total_nodes*problem.vec))
         return J
 
     def apply_bc(res_fn, node_inds_list, vec_inds_list, vals_list):
         def A_fn(dofs):
             """Apply Dirichlet boundary conditions
             """
-            sol = dofs.reshape((global_args['num_total_nodes'], problem.vec))
+            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
             res = res_fn(sol)
             for i in range(len(node_inds_list)):
                 res = res.at[node_inds_list[i], vec_inds_list[i]].set(sol[node_inds_list[i], vec_inds_list[i]], unique_indices=True)
@@ -713,9 +710,9 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
         def fn_dofs_row(dofs):
             """Apply Dirichlet boundary conditions
             """
-            sol = dofs.reshape((global_args['num_total_nodes'], problem.vec))
+            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
             res_dofs = fn_dofs(dofs)
-            res_sol = res_dofs.reshape((global_args['num_total_nodes'], problem.vec))
+            res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
             for i in range(len(node_inds_list)):
                 res_sol = res_sol.at[node_inds_list[i], vec_inds_list[i]].set(sol[node_inds_list[i], vec_inds_list[i]], unique_indices=True)
             return res_sol.reshape(-1)
@@ -735,7 +732,7 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
 
     def get_flatten_fn(fn_sol):
         def fn_dofs(dofs):
-            sol = dofs.reshape((global_args['num_total_nodes'], problem.vec))
+            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
             val_sol = fn_sol(sol)
             return val_sol.reshape(-1)
         return fn_dofs
@@ -748,16 +745,19 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
     res_fn = problem.compute_residual
     node_inds_list, vec_inds_list, vals_list = problem.Dirichlet_boundary_conditions()
     
-    print("Done pre-computing and start timing")
+    print("Start timing")
     start = time.time()
 
     if initial_guess is not None:
         sol = initial_guess
     else:
-        sol = np.zeros((global_args['num_total_nodes'], problem.vec))
+        sol = np.zeros((problem.num_total_nodes, problem.vec))
 
+    linear_solve_step = 0
     # This seems to be a quite good initial guess
+    # TODO: There's room for improvement.
     if use_linearization_guess:
+        print("Solving a linearized problem to get a good initial guess...")
         dofs = sol.reshape(-1)
         res_fn_dofs = get_flatten_fn(res_fn)
         res_fn_linear = get_A_fn_linear_fn(dofs, res_fn_dofs)
@@ -765,17 +765,17 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
         b = -res_fn(sol)
         b = assign_bc(b).reshape(-1)
         # print(f"step = 0, res l_2 = {np.linalg.norm(res_fn_final(assign_bc(sol).reshape(-1)))}") 
-        x0 = np.ones_like(dofs)
-        dofs, info = jax.scipy.sparse.linalg.bicgstab(res_fn_final, b, x0=x0, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
+        dofs = assign_bc(sol).reshape(-1)
+        dofs, info = jax.scipy.sparse.linalg.bicgstab(res_fn_final, b, x0=dofs, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
+        linear_solve_step += 1
     else:
         dofs = assign_bc(sol).reshape(-1)
    
     tol = 1e-6  
-    step = 1
     A_fn = apply_bc(res_fn, node_inds_list, vec_inds_list, vals_list)
     b = -A_fn(dofs)
     res_val = np.linalg.norm(b)
-    print(f"step = {step}, res l_2 = {res_val}") 
+    print(f"Before calling Newton's method, res l_2 = {res_val}") 
     # If the problem is linear, the Newton's iteration will not be triggered.
     while res_val > tol:
         A_fn_linear = get_A_fn_linear_fn(dofs, A_fn)
@@ -788,16 +788,16 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
             print(A_dense)
 
         inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
+        linear_solve_step += 1
         dofs = dofs + inc
         b = -A_fn(dofs)
         res_val = np.linalg.norm(b)
-        step += 1
-        print(f"step = {step}, res l_2 = {res_val}") 
+        print(f"step = {linear_solve_step}, res l_2 = {res_val}") 
 
     sol = dofs.reshape(sol.shape)
     end = time.time()
     solve_time = end - start
-    print(f"Solve took {solve_time} [s], finished in {step} linear solve steps")
+    print(f"Solve took {solve_time} [s], finished in {linear_solve_step} linear solve steps")
     print(f"max of sol = {np.max(sol)}")
     print(f"min of sol = {np.min(sol)}")
 

@@ -4,7 +4,7 @@ import numpy as onp
 import meshio
 
 
-def box_mesh(Nx, Ny, Nz):
+def box_mesh(Nx, Ny, Nz, Lx=1., Ly=1., Lz=1.):
     """References:
     https://gitlab.onelab.info/gmsh/gmsh/-/blob/master/examples/api/hex.py
     https://gitlab.onelab.info/gmsh/gmsh/-/blob/gmsh_4_7_1/tutorial/python/t1.py
@@ -16,9 +16,9 @@ def box_mesh(Nx, Ny, Nz):
         offset_x = 0.
         offset_y = 0.
         offset_z = 0.
-        domain_x = 1.
-        domain_y = 1.
-        domain_z = 1.
+        domain_x = Lx
+        domain_y = Ly
+        domain_z = Lz
 
         gmsh.initialize()
         gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)  # save in old MSH format
