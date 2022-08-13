@@ -9,20 +9,49 @@ from scipy.optimize import Bounds
 import meshio
 import time
 from src.fem.generate_mesh import box_mesh
-from src.fem.jax_fem import Mesh, Laplace, solver, save_sol
+from src.fem.jax_fem import Mesh, Laplace, save_sol
+from src.fem.solver import solver, linear_solver, apply_bc
+
+from src.fem.AuTo.utilfuncs import computeLocalElements, computeFilter
+from src.fem.AuTo.mmaOptimize import optimize
+
+
+
+nelx, nely = 50, 30
+elemSize = np.array([1., 1.])
+mesh = {'nelx':nelx, 'nely':nely, 'elemSize':elemSize,\
+        'ndof':3*(nelx+1)*(nely+1)*2, 'numElems':nelx*nely}
+
+material = {'Emax':1., 'Emin':1e-3, 'nu':0.3, 'penal':3.}
+
+filterRadius = 1.5
+H, Hs = computeFilter(mesh, filterRadius)
+ft = {'type':1, 'H':H, 'Hs':Hs}
+
+
+globalVolumeConstraint = {'isOn':True, 'vf':0.5}
+
+
+optimizationParams = {'maxIters':200,'minIters':100,'relTol':0.05}
+projection = {'isOn':False, 'beta':4, 'c0':0.5}
+
 
 
 class LinearElasticity(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        self.params = None
+        self.params = None       
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
-    
+        self.neumann_boundary_inds = self.Neuman_boundary_conditions_inds(neumann_bc_info[0])[0]
+
     def stress_strain_fns(self):
         def stress(u_grad, theta):
             # E = 10.
-            E = 1. + 9*theta**3
+            # E = 1. + 9*theta**3
+
+            E = material['Emin'] + (material['Emax'] - material['Emin'])*(theta+0.01)**material['penal']
+
             nu = 0.3
             mu = E/(2.*(1. + nu))
             lmbda = E*nu/((1+nu)*(1-2*nu))
@@ -58,7 +87,10 @@ class LinearElasticity(Laplace):
         val: ndarray
             ()
         """
-        boundary_inds = self.Neuman_boundary_conditions_inds([location_fn])[0]
+        # boundary_inds = self.Neuman_boundary_conditions_inds([location_fn])[0]
+
+        boundary_inds = self.neumann_boundary_inds
+
         _, nanson_scale = self.get_face_shape_grads(boundary_inds)
         # (num_selected_faces, 1, num_nodes, vec) * # (num_selected_faces, num_face_quads, num_nodes, 1)    
         u_face = sol[self.cells][boundary_inds[:, 0]][:, None, :, :] * self.face_shape_vals[boundary_inds[:, 1]][:, :, :, None]
@@ -68,37 +100,6 @@ class LinearElasticity(Laplace):
         traction = jax.vmap(jax.vmap(neumann_fn))(subset_quad_points) # (num_selected_faces, num_face_quads, vec)
         val = np.sum(traction * u_face * nanson_scale[:, :, None])
         return val
-
-
-def linear_elasticity():
-    # meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
-    meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
-
-    mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
-
-    def left(point):
-        return np.isclose(point[0], 0., atol=1e-5)
-        
-    def load(point):
-        return np.logical_and(np.isclose(point[0], 4., atol=1e-5), np.isclose(point[1], 0.5, atol=0.05))
-
-    def dirichlet_val(point):
-        return 0.
-
-    def neumann_val(point):
-        return np.array([0., -1., 0.])
-
-    dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
-    neumann_bc_info = [[load], [neumann_val]]
-
-    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info)
-    sol = solver(problem)
-
-    compliance = problem.compute_compliance(load, neumann_val, sol)
-    print(f"########### compliance = {compliance}")
-
-    vtu_path = f"src/fem/data/vtk/to/sol.vtu"
-    save_sol(problem, sol, vtu_path)
 
 
 def save_sol_params(problem, params, sol, sol_file):
@@ -114,15 +115,15 @@ def debug():
     for f in files:
         os.remove(f)
 
-
-    meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
-    mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
+    # meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
+    meshio_mesh = box_mesh(nelx, nely, 1, 50., 30., 1.)
+    jax_mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def left(point):
         return np.isclose(point[0], 0., atol=1e-5)
         
     def load(point):
-        return np.logical_and(np.isclose(point[0], 4., atol=1e-5), np.isclose(point[1], 0.5, atol=0.05))
+        return np.logical_and(np.isclose(point[0], 50., atol=1e-5), np.isclose(point[1], 15., atol=1.5))
 
     def dirichlet_val(point):
         return 0.
@@ -133,13 +134,12 @@ def debug():
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[load], [neumann_val]]
 
-    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info)
+    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info, neumann_bc_info)
 
     key = jax.random.PRNGKey(seed=0)
 
-    theta_ini = jax.random.uniform(key, (problem.num_cells,))
-
-    theta_ini = 0.4*np.ones(problem.num_cells)
+    # theta_ini = jax.random.uniform(key, (problem.num_cells,))
+    # theta_ini = 0.4*np.ones(problem.num_cells)
 
     node_inds_list, vec_inds_list, vals_list = problem.Dirichlet_boundary_conditions()
 
@@ -148,7 +148,8 @@ def debug():
     def fn(params):
         print(f"\nStep {fn.counter}")
         problem.params = params
-        sol = solver(problem, initial_guess=fn.sol, use_linearization_guess=False)
+        # sol = solver(problem, initial_guess=fn.sol, use_linearization_guess=False)
+        sol = linear_solver(problem)
         compliance = problem.compute_compliance(load, neumann_val, sol)
         dofs = sol.reshape(-1)
         vtu_path = f"src/fem/data/vtk/to/sol_{fn.counter:03d}.vtu"
@@ -163,18 +164,6 @@ def debug():
     fn.counter = 0
     fn.sol = np.zeros((problem.num_total_nodes, problem.vec))
 
-    def apply_bc(res_fn):
-        def A_fn(dofs):
-            """Apply Dirichlet boundary conditions
-            """
-            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-            res = res_fn(sol)
-            for i in range(len(node_inds_list)):
-                res = res.at[node_inds_list[i], vec_inds_list[i]].set(sol[node_inds_list[i], vec_inds_list[i]], unique_indices=True)
-                res = res.at[node_inds_list[i], vec_inds_list[i]].add(-vals_list[i])
-            return res.reshape(-1)
-        return A_fn
-
     def J_fn(dofs):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
         compliance = problem.compute_compliance(load, neumann_val, sol)
@@ -184,7 +173,7 @@ def debug():
         problem.params = params
         res_fn = problem.compute_residual
         
-        A_fn = apply_bc(res_fn)
+        A_fn = apply_bc(res_fn, problem)
         return A_fn(dofs)
 
     def get_partial_dofs_c_fn(params):
@@ -213,47 +202,42 @@ def debug():
             return val
         return jax.jit(adjoint_linear_fn)
 
+    @jax.jit
     def fn_grad(params):
         dofs = fn.dofs
         partial_dJ_dx = jax.grad(J_fn)(dofs)
         adjoint_linear_fn = get_adjoint_linear_fn(params, dofs)
         vjp_linear_fn = get_vjp_contraint_fn_params(params, dofs)
-        start = time.time()
-        adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_dx, x0=fn_grad.adjoint, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
-        fn_grad.adjoint = adjoint
-        end = time.time()
-        print(f"Adjoint solve took {end - start} [s]")
+        # start = time.time()
+        # adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_dx, x0=fn_grad.adjoint, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
+        adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_dx, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
+        # fn_grad.adjoint = adjoint
+        # end = time.time()
+        # print(f"Adjoint solve took {end - start} [s]")
         total_dJ_dp = -vjp_linear_fn(adjoint)
+        return total_dJ_dp
 
-        # 'L-BFGS-B' requires the following conversion, otherwise we get an error message saying
-        # -- input not fortran contiguous -- expected elsize=8 but got 4
-        return onp.array(total_dJ_dp, order='F', dtype=onp.float64)
+    # fn_grad.adjoint = np.zeros(problem.num_total_nodes*problem.vec)
 
-    fn_grad.adjoint = np.zeros(problem.num_total_nodes*problem.vec)
+    def objectiveHandle(rho):
+        J = fn(rho)
+        dJ = fn_grad(rho)
+        return J, dJ
 
-    bounds = Bounds(onp.zeros_like(theta_ini), onp.ones_like(theta_ini))
-
-    linear_constraint = LinearConstraint([[1./len(theta_ini)]*len(theta_ini)], [-onp.inf], [0.4])
-
-
-    g_fn = lambda x: 0.4 - np.mean(x)
-
-    ineq_cons = {'type': 'eq',
-                 'fun' : g_fn,
-                 'jac' : jax.grad(g_fn)}
-
+    def computeConstraints(rho, epoch): 
+        @jax.jit
+        def computeGlobalVolumeConstraint(rho):
+            g = np.mean(rho)/globalVolumeConstraint['vf'] - 1.
+            return g
+        # Code snippet 2.7
+        c, gradc = jax.value_and_grad(computeGlobalVolumeConstraint)(rho);
+        c, gradc = c.reshape((1, 1)), gradc.reshape((1, -1))
+        return c, gradc
  
-    options = {'maxiter': 10000, 'disp': True}  # CG or L-BFGS-B or Newton-CG or SLSQP or trust-constr
-    res = opt.minimize(fun=fn,
-                       x0=theta_ini,
-                       method='trust-constr',
-                       jac=fn_grad,
-                       bounds=bounds,
-                       callback=None,
-                       constraints=[linear_constraint],
-                       options=options)
+
+
+    optimize(mesh, optimizationParams, ft, objectiveHandle, computeConstraints, numConstraints=1)
 
 
 if __name__=="__main__":
-    # linear_elasticity()
     debug()

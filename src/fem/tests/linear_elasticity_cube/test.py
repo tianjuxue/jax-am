@@ -4,8 +4,9 @@ import jax
 import jax.numpy as np
 import meshio
 import unittest
-from src.fem.jax_fem import Mesh, LinearElasticity, solver, save_sol
+from src.fem.jax_fem import Mesh, LinearElasticity, save_sol
 from src.fem.tests.utils import modify_vtu_file
+from src.fem.solver import solver
 
 
 class Test(unittest.TestCase):

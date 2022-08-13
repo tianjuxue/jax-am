@@ -65,11 +65,11 @@ def optimize(mesh, optimizationParams, ft, \
         status = 'Iter {:d}; J {:.2F}; vf {:.2F}'.\
                 format(loop, J, jnp.mean(rho));
         print(status)
-        if(loop%10 == 0):
-            plt.imshow(-np.flipud(rho.reshape((mesh['nelx'], \
-                     mesh['nely'])).T), cmap='gray');
-            plt.title(status)
-            plt.show()
+        # if(loop%10 == 0):
+        #     plt.imshow(-np.flipud(rho.reshape((mesh['nelx'], \
+        #              mesh['nely'])).T), cmap='gray');
+        #     plt.title(status)
+        #     plt.show()
     totTime = time.perf_counter() - t0;
     
     print('total time(s): ', totTime);  

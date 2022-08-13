@@ -4,8 +4,9 @@ import jax
 import jax.numpy as np
 import meshio
 import unittest
-from src.fem.jax_fem import Mesh, Plasticity, solver, save_sol
+from src.fem.jax_fem import Mesh, Plasticity, save_sol
 from src.fem.tests.utils import modify_vtu_file
+from src.fem.solver import solver
 
 
 class Test(unittest.TestCase):
@@ -38,21 +39,22 @@ class Test(unittest.TestCase):
                 return disp
             return val_fn
 
-        location_fns = [bottom, bottom, bottom, top, top, top]
-        value_fns = [dirichlet_val_bottom, dirichlet_val_bottom, dirichlet_val_bottom, 
-                     dirichlet_val_bottom, dirichlet_val_bottom, None]
-        vecs = [0, 1, 2, 0, 1, 2]
-        dirichlet_bc_info = [location_fns, vecs, value_fns]
-
         disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
         # disps = np.array([0.1])
+
+        location_fns = [bottom, bottom, bottom, top, top, top]
+        value_fns = [dirichlet_val_bottom, dirichlet_val_bottom, dirichlet_val_bottom, 
+                     dirichlet_val_bottom, dirichlet_val_bottom, get_dirichlet_top(disps[0])]
+        vecs = [0, 1, 2, 0, 1, 2]
+        dirichlet_bc_info = [location_fns, vecs, value_fns]
 
         problem = Plasticity(f"{problem_name}", mesh, dirichlet_bc_info)
         avg_stresses = []
 
         for i, disp in enumerate(disps):
             print(f"\nStep {i} in {len(disps)}, disp = {disp}")
-            problem.dirichlet_bc_info[-1][-1] = get_dirichlet_top(disp)
+            dirichlet_bc_info[-1][-1] = get_dirichlet_top(disp)
+            problem.update_Dirichlet_boundary_conditions(dirichlet_bc_info)
             sol = solver(problem)
             problem.update_stress_strain(sol)
             avg_stress = problem.compute_avg_stress()

@@ -48,6 +48,7 @@ class FEM:
         self.shape_vals = self.get_shape_vals()
         self.shape_grads, self.JxW = self.get_shape_grads()
         self.face_shape_vals = self.get_face_shape_vals()
+        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions()
 
         print(f"Done pre-computations")
 
@@ -375,6 +376,12 @@ class FEM:
         return traction_list
 
 
+    def update_Dirichlet_boundary_conditions(self, dirichlet_bc_info):
+        # TODO: use getter setter!
+        self.dirichlet_bc_info = dirichlet_bc_info
+        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions()
+
+
 class Laplace(FEM):
     def __init__(self, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
@@ -683,125 +690,10 @@ class Plasticity(Laplace):
         return avg_sigma
 
 
+# TODO: Move to other modules
 def save_sol(problem, sol, sol_file):
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
     out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
     out_mesh.write(sol_file)
-
-
-def solver(problem, initial_guess=None, use_linearization_guess=True):
-    def operator_to_matrix(operator_fn):
-        J = jax.jacfwd(operator_fn)(np.zeros(problem.num_total_nodes*problem.vec))
-        return J
-
-    def apply_bc(res_fn, node_inds_list, vec_inds_list, vals_list):
-        def A_fn(dofs):
-            """Apply Dirichlet boundary conditions
-            """
-            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-            res = res_fn(sol)
-            for i in range(len(node_inds_list)):
-                res = res.at[node_inds_list[i], vec_inds_list[i]].set(sol[node_inds_list[i], vec_inds_list[i]], unique_indices=True)
-                res = res.at[node_inds_list[i], vec_inds_list[i]].add(-vals_list[i])
-            return res.reshape(-1)
-        return A_fn
-
-    def row_elimination(fn_dofs, node_inds_list, vec_inds_list, vals_list):
-        def fn_dofs_row(dofs):
-            """Apply Dirichlet boundary conditions
-            """
-            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-            res_dofs = fn_dofs(dofs)
-            res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
-            for i in range(len(node_inds_list)):
-                res_sol = res_sol.at[node_inds_list[i], vec_inds_list[i]].set(sol[node_inds_list[i], vec_inds_list[i]], unique_indices=True)
-            return res_sol.reshape(-1)
-        return fn_dofs_row
-
-    def get_A_fn_linear_fn(dofs, fn):
-        def A_fn_linear_fn(inc):
-            primals, tangents = jax.jvp(fn, (dofs,), (inc,))
-            return tangents
-        return A_fn_linear_fn
-
-    def get_A_fn_linear_fn_JFNK(dofs, fn):
-        def A_fn_linear_fn(inc):
-            EPS = 1e-3
-            return (fn(dofs + EPS*inc) - fn(dofs))/EPS
-        return A_fn_linear_fn
-
-    def get_flatten_fn(fn_sol):
-        def fn_dofs(dofs):
-            sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-            val_sol = fn_sol(sol)
-            return val_sol.reshape(-1)
-        return fn_dofs
-
-    def assign_bc(sol):
-        for i in range(len(node_inds_list)):
-            sol = sol.at[node_inds_list[i], vec_inds_list[i]].set(vals_list[i])
-        return sol
-
-    res_fn = problem.compute_residual
-    node_inds_list, vec_inds_list, vals_list = problem.Dirichlet_boundary_conditions()
-    
-    print("Start timing")
-    start = time.time()
-
-    if initial_guess is not None:
-        sol = initial_guess
-    else:
-        sol = np.zeros((problem.num_total_nodes, problem.vec))
-
-    linear_solve_step = 0
-    # This seems to be a quite good initial guess
-    # TODO: There's room for improvement.
-    if use_linearization_guess:
-        print("Solving a linearized problem to get a good initial guess...")
-        dofs = sol.reshape(-1)
-        res_fn_dofs = get_flatten_fn(res_fn)
-        res_fn_linear = get_A_fn_linear_fn(dofs, res_fn_dofs)
-        res_fn_final = row_elimination(res_fn_linear, node_inds_list, vec_inds_list, vals_list)
-        b = -res_fn(sol)
-        b = assign_bc(b).reshape(-1)
-        # print(f"step = 0, res l_2 = {np.linalg.norm(res_fn_final(assign_bc(sol).reshape(-1)))}") 
-        dofs = assign_bc(sol).reshape(-1)
-        dofs, info = jax.scipy.sparse.linalg.bicgstab(res_fn_final, b, x0=dofs, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
-        linear_solve_step += 1
-    else:
-        dofs = assign_bc(sol).reshape(-1)
-   
-    tol = 1e-6  
-    A_fn = apply_bc(res_fn, node_inds_list, vec_inds_list, vals_list)
-    b = -A_fn(dofs)
-    res_val = np.linalg.norm(b)
-    print(f"Before calling Newton's method, res l_2 = {res_val}") 
-    # If the problem is linear, the Newton's iteration will not be triggered.
-    while res_val > tol:
-        A_fn_linear = get_A_fn_linear_fn(dofs, A_fn)
-        debug = False
-        if debug:
-            # Check onditional number of the matrix
-            A_dense = operator_to_matrix(A_fn_linear)
-            print(np.linalg.cond(A_dense))
-            print(np.max(A_dense))
-            print(A_dense)
-
-        inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
-        linear_solve_step += 1
-        dofs = dofs + inc
-        b = -A_fn(dofs)
-        res_val = np.linalg.norm(b)
-        print(f"step = {linear_solve_step}, res l_2 = {res_val}") 
-
-    sol = dofs.reshape(sol.shape)
-    end = time.time()
-    solve_time = end - start
-    print(f"Solve took {solve_time} [s], finished in {linear_solve_step} linear solve steps")
-    print(f"max of sol = {np.max(sol)}")
-    print(f"min of sol = {np.min(sol)}")
-
-    return sol
-
 
  

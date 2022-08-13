@@ -135,6 +135,9 @@ class PFSolver(ODESolver):
         '''
         Clean the data folder.
         '''
+
+        # TODO: create the folder if not exist! Important!
+
         vtk_folder = f"post-processing/vtk/{args['case']}/pf/sols"
         numpy_folder = f"post-processing/numpy/{args['case']}/pf/sols"
         files_vtk = glob.glob(vtk_folder + f"/*")

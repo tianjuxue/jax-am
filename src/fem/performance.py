@@ -1,5 +1,11 @@
-import numpy as np
+import jax
+import jax.numpy as np
+import numpy as onp
 import matplotlib.pyplot as plt
+import time
+from src.fem.jax_fem import Mesh, LinearElasticity, save_sol
+from src.fem.solver import solver, linear_solver
+from src.fem.generate_mesh import box_mesh
 
 # Latex style plot
 plt.rcParams.update({
@@ -10,10 +16,8 @@ plt.rcParams.update({
 
 
 def linear_elasticity():
-    meshio_mesh = box_mesh(100, 100, 100)
+    meshio_mesh = box_mesh(10, 10, 10)
     mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
-    del meshio_mesh
-    gc.collect()
 
     def left(point):
         return np.isclose(point[0], 0., atol=1e-5)
@@ -27,26 +31,33 @@ def linear_elasticity():
     def dirichlet_val(point):
         return 0.1
 
-    def neumann_val(point):
-        return np.array([10., 0., 0.])
-
-    def body_force(point):
-        return np.array([point[0], 2.*point[1], 3.*point[2]])
-
-    dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
-    neumann_bc_info = [[right], [neumann_val]]
-
     dirichlet_bc_info = [[left, left, left, right, right, right], 
                          [0, 1, 2, 0, 1, 2], 
                          [zero_dirichlet_val, zero_dirichlet_val, zero_dirichlet_val, 
                           dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
-    neumann_bc_info = None
-    body_force = None
-
-    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info, neumann_bc_info, body_force)
+ 
+    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info)
+ 
+ 
+    print("Start timing")
+    start = time.time()
+    # sol = linear_solver(problem)
     sol = solver(problem)
+    end = time.time()
+    solve_time = end - start
+    print(f"Solve took {solve_time} [s]")
 
-    
+
+
+    print("Start timing")
+    start = time.time()
+    # sol = linear_solver(problem)
+    sol = solver(problem)
+    end = time.time()
+    solve_time = end - start
+    print(f"Solve took {solve_time} [s]")
+
+
 
 def performance_test():
     # Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]
@@ -122,5 +133,6 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
-    plt.show()
+    linear_elasticity()
+    # run()
+    # plt.show()

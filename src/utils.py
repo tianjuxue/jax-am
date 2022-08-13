@@ -253,3 +253,17 @@ def read_path():
     ts, xs, ys, ps = onp.hstack(ts), onp.hstack(xs), onp.hstack(ys), onp.hstack(ps)  
     print(f"Total number of time steps = {len(ts)}")
     return ts, xs, ys, ps
+
+
+def make_video():
+    # The command -pix_fmt yuv420p is to ensure preview of video on Mac OS is enabled
+    # https://apple.stackexchange.com/questions/166553/why-wont-video-from-ffmpeg-show-in-quicktime-imovie-or-quick-preview
+    # The command -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" is to solve the following "not-divisible-by-2" problem
+    # https://stackoverflow.com/questions/20847674/ffmpeg-libx264-height-not-divisible-by-2
+    # -y means always overwrite
+    os.system('ffmpeg -y -framerate 10 -i post-processing/png/tmp/u.%04d.png -pix_fmt yuv420p -vf \
+              "crop=trunc(iw/2)*2:trunc(ih/2)*2" post-processing/mp4/test.mp4')
+
+
+if __name__=="__main__":
+    make_video()
