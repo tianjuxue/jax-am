@@ -4,9 +4,10 @@ import jax
 import jax.numpy as np
 import meshio
 import unittest
-from src.fem.jax_fem import Mesh, Plasticity, save_sol
-from src.fem.tests.utils import modify_vtu_file
+from src.fem.jax_fem import Mesh, Plasticity
 from src.fem.solver import solver
+from src.fem.utils import modify_vtu_file, save_sol
+
 
 
 class Test(unittest.TestCase):
@@ -39,8 +40,7 @@ class Test(unittest.TestCase):
                 return disp
             return val_fn
 
-        disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
-        # disps = np.array([0.1])
+        disps = np.load(f"src/fem/tests/{problem_name}/fenicsx/disps.npy")
 
         location_fns = [bottom, bottom, bottom, top, top, top]
         value_fns = [dirichlet_val_bottom, dirichlet_val_bottom, dirichlet_val_bottom, 

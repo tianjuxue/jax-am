@@ -5,7 +5,7 @@ from jax import jit, grad, random, jacfwd, value_and_grad
 from functools import partial
 import time
 import matplotlib.pyplot as plt
-from src.fem.AuTo.utilfuncs import MMA,applySensitivityFilter
+from src.fem.applications.top_opt.AuTo.utilfuncs import MMA, applySensitivityFilter
 
 
 def optimize(mesh, optimizationParams, ft, \

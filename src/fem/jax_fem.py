@@ -19,22 +19,29 @@ onp.random.seed(0)
 onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=5)
 
 
-class Mesh():
-    """A custom mesh manager might be better than just use third-party packages like meshio?
-    """
-    def __init__(self, points, cells):
-        # TODO: Assert that cells must have correct orders 
-        self.points = points
-        self.cells = cells
-
-
 class FEM:
     def __init__(self, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
-        self.mesh = mesh
-        self.dirichlet_bc_info = dirichlet_bc_info
-        self.neumann_bc_info = neumann_bc_info
-        self.source_info = source_info
+        """Currently, only hexahedron first-order finite element is supported.
 
+        Attributes
+        ----------
+        self.mesh: Mesh object
+            The mesh object stores points (coordinates) and cells (connectivity).
+        self.points: ndarray
+            shape: (num_total_nodes, dim) 
+            The physical mesh nodal coordinates.
+        self.dim: int
+            The dimension of the problem.
+        self.num_quads: int
+            Number of quadrature points for each hex element.
+        self.num_faces: int
+            Number of faces for each hex element.
+        self.num_cells: int
+            Number of hex elements.
+        self.num_total_nodes: int
+            Number of total nodes.
+        """
+        self.mesh = mesh
         self.points = self.mesh.points
         self.cells = self.mesh.cells
         self.dim = 3
@@ -44,11 +51,11 @@ class FEM:
         self.num_cells = len(self.cells)
         self.num_total_nodes = len(self.mesh.points)
 
-        #Many quantities can be pre-computed and stored for better performance.
+        # Some re-used quantities can be pre-computed and stored for better performance.
         self.shape_vals = self.get_shape_vals()
         self.shape_grads, self.JxW = self.get_shape_grads()
         self.face_shape_vals = self.get_face_shape_vals()
-        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions()
+        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
         print(f"Done pre-computations")
 
@@ -210,6 +217,11 @@ class FEM:
         Nanson's formula is used to map physical surface ingetral to reference domain
         Reference: https://en.wikiversity.org/wiki/Continuum_mechanics/Volume_change_and_area_change
 
+        Parameters
+        ----------
+        boundary_inds: list[ndarray]
+            ndarray shape: (num_selected_faces, 2)
+
         Returns
         ------- 
         face_shape_grads_physical: ndarray
@@ -287,20 +299,30 @@ class FEM:
         physical_surface_quad_points = np.sum(selected_face_shape_vals[:, :, :, None] * selected_coos[:, None, :, :], axis=2)
         return physical_surface_quad_points
 
-    def Dirichlet_boundary_conditions(self):
+    def Dirichlet_boundary_conditions(self, dirichlet_bc_info):
         """Indices and values for Dirichlet B.C. 
-        The solution array is of shape (num_total_nodes, vec)
+
+        Parameters
+        ----------
+        dirichlet_bc_info: [location_fns, vecs, value_fns]
+            location_fns: list[callable]
+                callable: a function that inputs a point (ndarray) and returns if the point satisfies the location condition
+            vecs: list[int]
+                integer value must be in the range of 0 to vec - 1, 
+                specifying which component of the (vector) variable to apply Dirichlet condition to
+            value_fns: list[callable]
+                callable: a function that inputs a point (ndarray) and returns the Dirichlet value
 
         Returns
         ------- 
         node_inds_list: list[ndarray]
-            The array ranges from 0 to num_total_nodes - 1
+            The ndarray ranges from 0 to num_total_nodes - 1
         vec_inds_list: list[ndarray]
-            The array ranges from 0 to to vec - 1
+            The ndarray ranges from 0 to to vec - 1
         vals_list: list[ndarray]
             Dirichlet values to be assigned
         """
-        location_fns, vecs, value_fns = self.dirichlet_bc_info
+        location_fns, vecs, value_fns = dirichlet_bc_info
         # TODO: add assertion for vecs, vecs must only contain 0 or 1 or 2, and must be integer
         assert len(location_fns) == len(value_fns) and len(value_fns) == len(vecs)
         node_inds_list = []
@@ -315,12 +337,16 @@ class FEM:
             vals_list.append(values)
         return node_inds_list, vec_inds_list, vals_list
 
+    def update_Dirichlet_boundary_conditions(self, dirichlet_bc_info):
+        """Reset Dirichlet boundary conditions.
+        Useful when a time-dependent problem is solved, and at each iteration the boundary condition needs to be updated.
+        """
+        # TODO: use getter and setter!
+        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
     def get_face_inds(self):
         """Hard-coded reference node points.
         Important: order must match "self.cells" by gmsh file!
-
-        TODO: move this function to a more suitable place
 
         Returns
         ------- 
@@ -345,7 +371,19 @@ class FEM:
         return face_inds
 
     def Neuman_boundary_conditions_inds(self, location_fns):
-        """TODO: Add comments
+        """Given location functions, compute which faces satisfy the condition. 
+
+        Parameters
+        ----------
+        location_fns: list[callable]
+            callable: a function that inputs a point (ndarray) and returns if the point satisfies the location condition
+                      e.g., lambda x: np.isclose(x[0], 0.)
+
+        Returns
+        ------- 
+        boundary_inds_list: list[ndarray]
+            ndarray shape: (num_selected_faces, 2)
+            boundary_inds_list[i, j] returns the index of face j of cell i
         """
         face_inds = self.get_face_inds()
         cell_points = np.take(self.points, self.cells, axis=0)
@@ -363,7 +401,20 @@ class FEM:
         return boundary_inds_list
 
     def Neuman_boundary_conditions_vals(self, value_fns, boundary_inds_list):
-        """TODO: Add comments
+        """Compute traction values on the face quadrature points.
+
+        Parameters
+        ----------
+        value_fns: list[callable]
+            callable: a function that inputs a point (ndarray) and returns the value
+                      e.g., lambda x: x[0]**2
+        boundary_inds_list: list[ndarray]
+            ndarray shape: (num_selected_faces, 2)    
+
+        Returns
+        ------- 
+            traction_list: list[ndarray]
+            ndarray shape: (num_selected_faces, num_face_quads, vec)
         """
         traction_list = []
         for i in range(len(value_fns)):
@@ -376,29 +427,38 @@ class FEM:
         return traction_list
 
 
-    def update_Dirichlet_boundary_conditions(self, dirichlet_bc_info):
-        # TODO: use getter setter!
-        self.dirichlet_bc_info = dirichlet_bc_info
-        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions()
-
-
 class Laplace(FEM):
+    """Solving problems whose weak form is (f(u_grad), v_grad) * dx - (traction, v) * ds - (body_force, v) * dx = 0,
+    where u and v are trial and test functions, respectively, and f is a general function.
+    This covers
+        - Poisson's problem (linear or nonlinear)
+        - Linear elasticity
+        - Hyper-elasticity
+        - Plasticity
+        ...
+    """
     def __init__(self, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
         # Some pre-computations   
-        self.rhs = self.compute_rhs()
-        self.neumann = self.compute_Neumann_integral()
+        self.body_force = self.compute_body_force(source_info)
+        self.neumann = self.compute_Neumann_integral(neumann_bc_info)
         # (num_cells, num_quads, num_nodes, 1, dim)
         self.v_grads_JxW = self.shape_grads[:, :, :, None, :] * self.JxW[:, :, None, None, None]
 
     def compute_residual(self, sol):
-        """The function takes a lot of memory - Thinking about ways for memory saving...
+        """Compute residual vector from the weak form.
+        The function takes a lot of memory - Thinking about ways for memory saving...
         E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
 
         Parameters
         ----------
         sol: ndarray
-            (num_nodes, vec) 
+            (num_total_nodes, vec) 
+
+        Returns
+        -------
+        res: ndarray
+            (num_total_nodes, vec) 
         """
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
         u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
@@ -407,20 +467,42 @@ class Laplace(FEM):
         # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
         weak_form = np.sum(u_physics[:, :, None, :, :] * self.v_grads_JxW, axis=(1, -1)).reshape(-1, self.vec) 
         res = np.zeros_like(sol)
-        res = res.at[self.cells.reshape(-1)].add(weak_form)
-        return res - self.rhs - self.neumann
+        res = res.at[self.cells.reshape(-1)].add(weak_form) - self.body_force - self.neumann
+        return res 
 
     def compute_physics(self, sol, u_grads):
-        """Default
+        """In the weak form, we have (f(u_grad), v_grad) * dx, and this function defines the "f" here.
+        Default to be identity function. 
+        Child class should override this function.
+
+        Parameters
+        ----------
+        u_grads: ndarray
+            (num_cells, num_quads, vec, dim)   
+
+        Returns
+        -------
+        f(u_grads): ndarray
+            (num_cells, num_quads, vec, dim)
         """
         return u_grads
 
-    def compute_rhs(self):
-        """Default
+    def compute_body_force(self, source_info):
+        """In the weak form, we have (body_force, v) * dx, and this function computes this.
+
+        Parameters
+        ----------
+        source_info: callable
+            A function that inputs a point (ndarray) and returns the body force at this point.
+
+        Returns
+        -------
+        body_force: ndarray
+            (num_total_nodes, vec)
         """
         rhs = np.zeros((self.num_total_nodes, self.vec))
-        if self.source_info is not None:
-            body_force_fn = self.source_info
+        if source_info is not None:
+            body_force_fn = source_info
             physical_quad_points = self.get_physical_quad_points() # (num_cells, num_quads, dim) 
             body_force = jax.vmap(jax.vmap(body_force_fn))(physical_quad_points) # (num_cells, num_quads, vec) 
             assert len(body_force.shape) == 3
@@ -431,10 +513,23 @@ class Laplace(FEM):
             rhs = rhs.at[self.cells.reshape(-1)].add(rhs_vals) 
         return rhs
 
-    def compute_Neumann_integral(self):
+    def compute_Neumann_integral(self, neumann_bc_info):
+        """In the weak form, we have the Neumann integral: (traction, v) * ds, and this function computes this.
+
+        Parameters
+        ----------
+        neumann_bc_info: [location_fns, boundary_inds_list]
+            location_fns: list[callable]
+            value_fns: list[callable]
+
+        Returns
+        -------
+        integral: ndarray
+            (num_total_nodes, vec)
+        """
         integral = np.zeros((self.num_total_nodes, self.vec))
-        if self.neumann_bc_info is not None:
-            location_fns, value_fns = self.neumann_bc_info
+        if neumann_bc_info is not None:
+            location_fns, value_fns = neumann_bc_info
             integral = np.zeros((self.num_total_nodes, self.vec))
             boundary_inds_list = self.Neuman_boundary_conditions_inds(location_fns)
             traction_list = self.Neuman_boundary_conditions_vals(value_fns, boundary_inds_list)
@@ -451,7 +546,18 @@ class Laplace(FEM):
         return integral
 
     def surface_integral(self, location_fn, surface_fn, sol):
-        """For post-processing only
+        """Compute surface integral specified by surface_fn: f(u_grad) * ds
+        For post-processing only.
+        Example usage: compute the total force on a certain surface.
+
+        Parameters
+        ----------
+        location_fn: callable
+            A function that inputs a point (ndarray) and returns if the point satisfies the location condition.
+        surface_fn: callable
+            A function that inputs a point (ndarray) and returns the value.
+        sol: ndarray
+            (num_total_nodes, vec)
 
         Returns
         -------
@@ -605,7 +711,6 @@ class HyperElasticity(Laplace):
         return traction_integral_val
 
 
-
 class Plasticity(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
         self.name = name
@@ -655,7 +760,6 @@ class Plasticity(Laplace):
         vmap_stress_return_map = jax.vmap(stress_return_map)
         return vmap_strain, vmap_stress_return_map
 
-
     def compute_physics(self, sol, u_grads):
         """
         Reference: https://comet-fenics.readthedocs.io/en/latest/demo/2D_plasticity/vonMises_plasticity.py.html
@@ -690,10 +794,10 @@ class Plasticity(Laplace):
         return avg_sigma
 
 
-# TODO: Move to other modules
-def save_sol(problem, sol, sol_file):
-    out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
-    out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
-    out_mesh.write(sol_file)
-
- 
+class Mesh():
+    """A custom mesh manager might be better than just use third-party packages like meshio?
+    """
+    def __init__(self, points, cells):
+        # TODO: Assert that cells must have correct orders 
+        self.points = points
+        self.cells = cells

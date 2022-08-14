@@ -36,6 +36,7 @@ def assign_bc(sol, problem):
         sol = sol.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set(problem.vals_list[i])
     return sol
 
+
 def get_A_fn_linear_fn(dofs, fn):
     def A_fn_linear_fn(inc):
         primals, tangents = jax.jvp(fn, (dofs,), (inc,))

@@ -4,9 +4,9 @@ import jax
 import jax.numpy as np
 import meshio
 import unittest
-from src.fem.jax_fem import Mesh, NonlinearPoisson, save_sol
-from src.fem.tests.utils import modify_vtu_file
+from src.fem.jax_fem import Mesh, NonlinearPoisson
 from src.fem.solver import solver
+from src.fem.utils import modify_vtu_file, save_sol
 
 
 class Test(unittest.TestCase):

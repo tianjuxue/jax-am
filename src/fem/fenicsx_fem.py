@@ -3,6 +3,7 @@ import dolfinx
 from dolfinx import fem, io, mesh, plot, log
 import ufl
 from ufl import ds, dx, grad, inner
+import basix
 from mpi4py import MPI
 import petsc4py
 from petsc4py import PETSc
@@ -10,7 +11,8 @@ from petsc4py.PETSc import ScalarType
 import time
 import meshio
 import sys
-import basix
+import os
+
 from src.fem.generate_mesh import cylinder_mesh 
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, precision=5)
@@ -348,8 +350,7 @@ def hyperelasticity():
     return solve_time
 
 
-
-def plasticity():
+def plasticity(disps, path, case):
     meshio_mesh = cylinder_mesh()
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
@@ -446,7 +447,6 @@ def plasticity():
 
     start_time = time.time()
     avg_stresses = []
-    disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
 
     for i, disp in enumerate(disps):
         # Remark(Tianju): "problem" should be better defined outside of the for loop, 
@@ -495,21 +495,25 @@ def plasticity():
 
     print(f"Volume averaged stress = {avg_stresses}")
 
-    # TODO: ask a question on the forum
     sig.x.array[:] = quad_interpolation(new_sig, W).x.array
     avg_stress_quad = fem.assemble_scalar(fem.form(sig[2, 2]*dxm))/vol
     avg_stress_node = fem.assemble_scalar(fem.form(stress_fn(u_crt)[2, 2]*dxm))/vol
     print(avg_stress_quad)
     print(avg_stress_node)
- 
-    np.save(f"src/fem/tests/plasticity/fenicsx/avg_stresses.npy", avg_stresses)
-    np.save(f"src/fem/tests/plasticity/fenicsx/disps.npy", disps)
 
     u_crt.name = 'sol'
-    file = io.VTKFile(msh.comm, "src/fem/tests/plasticity/fenicsx/sol.pvd", "w")  
+
+    if case == 'test':
+        np.save(os.path.join(path, 'avg_stresses.npy'), avg_stresses)
+        np.save(os.path.join(path, 'disps.npy'), disps)
+        file = io.VTKFile(msh.comm, os.path.join(path, 'sol.pvd'), "w")
+    else:
+        np.save(os.path.join(path, 'numpy/plasticity/fenicsx/avg_stresses.npy'), avg_stresses)
+        np.save(os.path.join(path, 'numpy/plasticity/fenicsx/disps.npy'), disps)
+        file = io.VTKFile(msh.comm, os.path.join(path, 'vtk/plasticity/fenicsx/sol.pvd'), "w")
+
     file.write_function(u_crt, 0) 
     return solve_time
-
 
 
 def performance_test():
@@ -538,9 +542,17 @@ def generate_ground_truth_results_for_tests():
     # linear_elasticity_cube(10)
     # linear_elasticity_cylinder()
     # hyperelasticity()
-    plasticity()
+    plasticity(np.array([0., 0.05, 0.1, 0.05, 0.]), f"src/fem/tests/plasticity/fenicsx/", 'test')
+
+
+def generate_fem_examples():
+    lasticity_disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
+    plasticity_path =  f"src/fem/applications/fem_examples/data/"
+    plasticity(lasticity_disps, plasticity_path, 'example')
 
 
 if __name__ == "__main__":
     # performance_test()
-    generate_ground_truth_results_for_tests()
+    # generate_ground_truth_results_for_tests()
+    generate_fem_examples()
+

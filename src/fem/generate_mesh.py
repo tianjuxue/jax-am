@@ -123,7 +123,6 @@ def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
 if __name__=="__main__":
     cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4)
 
- 
 
 
 

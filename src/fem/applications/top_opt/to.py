@@ -3,18 +3,20 @@ import jax
 import jax.numpy as np
 import os
 import glob
+import os
 import scipy.optimize as opt
 from scipy.optimize import LinearConstraint
 from scipy.optimize import Bounds
 import meshio
 import time
+
 from src.fem.generate_mesh import box_mesh
-from src.fem.jax_fem import Mesh, Laplace, save_sol
+from src.fem.jax_fem import Mesh, Laplace
 from src.fem.solver import solver, linear_solver, apply_bc
+from src.fem.utils import save_sol
 
-from src.fem.AuTo.utilfuncs import computeLocalElements, computeFilter
-from src.fem.AuTo.mmaOptimize import optimize
-
+from src.fem.applications.top_opt.AuTo.utilfuncs import computeLocalElements, computeFilter
+from src.fem.applications.top_opt.AuTo.mmaOptimize import optimize
 
 
 nelx, nely = 50, 30
@@ -70,27 +72,30 @@ class LinearElasticity(Laplace):
         u_grads: ndarray
             (num_cells, num_quads, vec, dim)
         """
-
         thetas = np.repeat(self.params[:, None], self.num_quads, axis=1).reshape(-1)
-
         u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
         vmap_stress = self.stress_strain_fns()
         sigmas = vmap_stress(u_grads_reshape, thetas).reshape(u_grads.shape)
         return sigmas
 
+    def compute_compliance(self, neumann_fn, sol):
+        """Compute surface integral specified by neumann_fn: (traction, u) * ds
+        For post-processing only.
+        Example usage: compute the total force on a certain surface.
 
-    def compute_compliance(self, location_fn, neumann_fn, sol):
-        """Compute compliance
+        Parameters
+        ----------
+        surface_fn: callable
+            A function that inputs a point (ndarray) and returns the value.
+        sol: ndarray
+            (num_total_nodes, vec)
 
         Returns
         -------
         val: ndarray
             ()
         """
-        # boundary_inds = self.Neuman_boundary_conditions_inds([location_fn])[0]
-
         boundary_inds = self.neumann_boundary_inds
-
         _, nanson_scale = self.get_face_shape_grads(boundary_inds)
         # (num_selected_faces, 1, num_nodes, vec) * # (num_selected_faces, num_face_quads, num_nodes, 1)    
         u_face = sol[self.cells][boundary_inds[:, 0]][:, None, :, :] * self.face_shape_vals[boundary_inds[:, 1]][:, :, :, None]
@@ -103,6 +108,7 @@ class LinearElasticity(Laplace):
 
 
 def save_sol_params(problem, params, sol, sol_file):
+    # TODO: a more general save sol func
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
     out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
     out_mesh.cell_data['theta'] = [onp.array(params, dtype=onp.float32)]
@@ -110,8 +116,9 @@ def save_sol_params(problem, params, sol, sol_file):
 
 
 def debug():
+    root_path = f'src/fem/applications/top_opt/data'
 
-    files = glob.glob(f"src/fem/data/vtk/to/*")
+    files = glob.glob(os.path.join(root_path, 'vtk/*'))
     for f in files:
         os.remove(f)
 
@@ -140,9 +147,6 @@ def debug():
 
     # theta_ini = jax.random.uniform(key, (problem.num_cells,))
     # theta_ini = 0.4*np.ones(problem.num_cells)
-
-    node_inds_list, vec_inds_list, vals_list = problem.Dirichlet_boundary_conditions()
-
     # compliance = fn(theta_ini)
 
     def fn(params):
@@ -150,9 +154,9 @@ def debug():
         problem.params = params
         # sol = solver(problem, initial_guess=fn.sol, use_linearization_guess=False)
         sol = linear_solver(problem)
-        compliance = problem.compute_compliance(load, neumann_val, sol)
+        compliance = problem.compute_compliance(neumann_val, sol)
         dofs = sol.reshape(-1)
-        vtu_path = f"src/fem/data/vtk/to/sol_{fn.counter:03d}.vtu"
+        vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
         save_sol_params(problem, params, sol, vtu_path)
         fn.dofs = dofs
         fn.sol = dofs.reshape((problem.num_total_nodes, problem.vec))
@@ -166,7 +170,7 @@ def debug():
 
     def J_fn(dofs):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        compliance = problem.compute_compliance(load, neumann_val, sol)
+        compliance = problem.compute_compliance(neumann_val, sol)
         return compliance
 
     def constraint_fn(params, dofs):
@@ -229,13 +233,10 @@ def debug():
         def computeGlobalVolumeConstraint(rho):
             g = np.mean(rho)/globalVolumeConstraint['vf'] - 1.
             return g
-        # Code snippet 2.7
         c, gradc = jax.value_and_grad(computeGlobalVolumeConstraint)(rho);
         c, gradc = c.reshape((1, 1)), gradc.reshape((1, -1))
         return c, gradc
  
-
-
     optimize(mesh, optimizationParams, ft, objectiveHandle, computeConstraints, numConstraints=1)
 
 
