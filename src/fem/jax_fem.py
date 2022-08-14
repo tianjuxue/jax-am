@@ -60,7 +60,7 @@ class FEM:
         print(f"Done pre-computations")
 
     def get_shape_val_functions(self):
-        """Hard-coded first order shape functions in the parent domain.
+        """Hard-coded first order shape functions in the reference domain.
         Important: f1-f8 order must match "self.cells" by gmsh file!
         """
         f1 = lambda x: -1./8.*(x[0] - 1)*(x[1] - 1)*(x[2] - 1)
