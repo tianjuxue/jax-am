@@ -1,4 +1,3 @@
-
 # JAX-AM
 
 <p align="middle">
@@ -7,12 +6,14 @@
 
 A GPU-based simulation toolbox for additive manufacturing.
 
-# TODO
+## Documentation
+
+Please see the [web documentation]([jax-am.readthedocs.io/en/latest/]) for details of this project.
+
+
+## To-do
 
 1. Merge CFD code
 2. Pre-processing with YAML
 3. Post-processing to HDF5
-4. Document
-5. Tests
-6. Implicit formulations
-7. Moving-box solver
+4. Moving-box solver
