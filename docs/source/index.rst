@@ -64,7 +64,8 @@ Contents
    FAQ
    api
    about
-   usage
+   tutorial
+   template
 
 Indices and tables
 ==================

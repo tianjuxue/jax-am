@@ -24,6 +24,7 @@ numpy
 # More
 myst-parser
 sphinxcontrib-autoyaml
+sphinxcontrib-youtube
 jax[cpu]
 jaxopt
 meshio[all]

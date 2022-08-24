@@ -66,5 +66,5 @@ you can use the ``src.lumache.get_random_ingredients()`` function:
 
 Others
 ------
-Check out the :doc:`usage` section for further information, including
+Check out the :doc:`template` section for further information, including
 how to :ref:`installation` the project.

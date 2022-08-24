@@ -10,7 +10,7 @@ from src.fem.utils import modify_vtu_file, save_sol
 
 
 class Test(unittest.TestCase):
-    """Test linear elasticity with cylinder mesh
+    """Test hyper-elasticity with cylinder mesh
     """
     def test_solve_problem(self):
         """Compare FEniCSx solution with JAX-FEM

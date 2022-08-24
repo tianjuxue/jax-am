@@ -43,7 +43,8 @@ extensions = ['myst_parser',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
               'sphinxcontrib.autoyaml',
-              'sphinx.ext.napoleon',]
+              'sphinx.ext.napoleon',
+              'sphinxcontrib.youtube',]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

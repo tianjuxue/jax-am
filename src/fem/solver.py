@@ -118,7 +118,7 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
 
     # Newton's method begins here.
     # If the problem is linear, the Newton's iteration will not be triggered.
-    tol = 1e-6  
+    tol = 1e-6
     A_fn = apply_bc(res_fn, problem)
     b = -A_fn(dofs)
     res_val = np.linalg.norm(b)
