@@ -43,7 +43,7 @@ class Test(unittest.TestCase):
         vecs = [0, 1, 2, 0, 1, 2]
         dirichlet_bc_info = [location_fns, vecs, value_fns]
 
-        problem = HyperElasticity(f"{problem_name}", mesh, dirichlet_bc_info)
+        problem = HyperElasticity(f"{problem_name}", mesh, dirichlet_bc_info=dirichlet_bc_info)
         sol = solver(problem)
 
         jax_vtu_path = f"src/fem/tests/{problem_name}/jax_fem/sol.vtu"

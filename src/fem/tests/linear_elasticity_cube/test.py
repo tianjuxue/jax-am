@@ -47,7 +47,8 @@ class Test(unittest.TestCase):
 
         neumann_bc_info = [[right], [neumann_val]]
 
-        problem = LinearElasticity(f"{problem_name}", mesh, dirichlet_bc_info, neumann_bc_info, body_force)
+        problem = LinearElasticity(f"{problem_name}", mesh, dirichlet_bc_info=dirichlet_bc_info, 
+                                   periodic_bc_info=None, neumann_bc_info=neumann_bc_info, source_info=body_force)
         sol = solver(problem)
 
         jax_vtu_path = f"src/fem/tests/{problem_name}/jax_fem/sol.vtu"

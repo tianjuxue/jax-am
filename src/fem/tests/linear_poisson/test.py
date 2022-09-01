@@ -42,7 +42,7 @@ class Test(unittest.TestCase):
         vecs = [0, 0]
         dirichlet_bc_info = [location_fns, vecs, value_fns]
 
-        problem = LinearPoisson(f"{problem_name}", mesh, dirichlet_bc_info)
+        problem = LinearPoisson(f"{problem_name}", mesh, dirichlet_bc_info=dirichlet_bc_info)
         sol = solver(problem)
 
         jax_vtu_path = f"src/fem/tests/{problem_name}/jax_fem/sol.vtu"

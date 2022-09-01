@@ -20,7 +20,7 @@ onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True, preci
 
 
 class FEM:
-    def __init__(self, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         """Currently, only hexahedron first-order finite element is supported.
 
         Attributes
@@ -55,7 +55,13 @@ class FEM:
         self.shape_vals = self.get_shape_vals()
         self.shape_grads, self.JxW = self.get_shape_grads()
         self.face_shape_vals = self.get_face_shape_vals()
+
+        # Note: Assume Dirichlet B.C. must be provided. This is probably true for all the problems we will encounter.
         self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
+
+        self.periodic_bc_info = periodic_bc_info
+        if periodic_bc_info is not None:
+            self.p_node_inds_list_A, self.p_node_inds_list_B, self.p_vec_inds_list = periodic_bc_info
 
         print(f"Done pre-computations")
 
@@ -437,8 +443,8 @@ class Laplace(FEM):
         - Plasticity
         ...
     """
-    def __init__(self, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
+    def __init__(self, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info) 
         # Some pre-computations   
         self.body_force = self.compute_body_force(source_info)
         self.neumann = self.compute_Neumann_integral(neumann_bc_info)
@@ -576,17 +582,18 @@ class Laplace(FEM):
 
 
 class LinearPoisson(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 1
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info) 
+
 
 
 class NonlinearPoisson(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 1
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info) 
 
     def compute_physics(self, sol, u_grads):
         """
@@ -604,10 +611,10 @@ class NonlinearPoisson(Laplace):
 
 
 class LinearElasticity(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info) 
     
     def stress_strain_fns(self):
         def stress(u_grad):
@@ -647,10 +654,10 @@ class LinearElasticity(Laplace):
 
 
 class HyperElasticity(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info)
 
     def stress_strain_fns(self):
         def psi(F):
@@ -712,10 +719,10 @@ class HyperElasticity(Laplace):
 
 
 class Plasticity(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info)
         self.epsilons_old = np.zeros((len(self.cells)*self.num_quads, self.vec, self.dim))
         self.sigmas_old = np.zeros_like(self.epsilons_old)
 

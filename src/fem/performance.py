@@ -37,7 +37,7 @@ def linear_elasticity():
                          [zero_dirichlet_val, zero_dirichlet_val, zero_dirichlet_val, 
                           dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
  
-    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info)
+    problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info=dirichlet_bc_info)
  
  
     print("Start timing")

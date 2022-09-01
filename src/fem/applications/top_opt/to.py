@@ -40,11 +40,11 @@ projection = {'isOn':False, 'beta':4, 'c0':0.5}
 
 
 class LinearElasticity(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
         self.params = None       
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
+        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info)
         self.neumann_boundary_inds = self.Neuman_boundary_conditions_inds(neumann_bc_info[0])[0]
 
     def stress_strain_fns(self):
@@ -141,7 +141,7 @@ def debug():
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[load], [neumann_val]]
 
-    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info, neumann_bc_info)
+    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=dirichlet_bc_info)
 
     key = jax.random.PRNGKey(seed=0)
 

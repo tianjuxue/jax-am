@@ -48,7 +48,7 @@ class Test(unittest.TestCase):
         vecs = [0, 1, 2, 0, 1, 2]
         dirichlet_bc_info = [location_fns, vecs, value_fns]
 
-        problem = Plasticity(f"{problem_name}", mesh, dirichlet_bc_info)
+        problem = Plasticity(f"{problem_name}", mesh, dirichlet_bc_info=dirichlet_bc_info)
         avg_stresses = []
 
         for i, disp in enumerate(disps):
