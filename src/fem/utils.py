@@ -3,6 +3,7 @@ import numpy as onp
 
 
 def save_sol(problem, sol, sol_file):
+    # TODO: create a directory if not exists
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
     out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
     out_mesh.write(sol_file)
