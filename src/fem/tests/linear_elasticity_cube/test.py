@@ -20,7 +20,7 @@ class Test(unittest.TestCase):
         fenicsx_vtu_path = f"src/fem/tests/{problem_name}/fenicsx/sol.vtu"
         modify_vtu_file(fenicsx_vtu_path_raw, fenicsx_vtu_path)
         fenicsx_vtu = meshio.read(fenicsx_vtu_path)
-        cells = fenicsx_vtu.cells_dict['VTK_LAGRANGE_HEXAHEDRON8'] # 'hexahedron'
+        cells = fenicsx_vtu.cells_dict['VTK_LAGRANGE_HEXAHEDRON'] # 'hexahedron'
         points = fenicsx_vtu.points
         mesh = Mesh(points, cells)
         L = 1.

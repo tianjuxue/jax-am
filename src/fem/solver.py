@@ -43,7 +43,27 @@ def assign_zero_bc(sol, problem):
     return sol
 
 
-def periodic_apply_bc(fn_dofs, problem):
+######################################################################################
+# Tyring impoising periodic B.C. like Dirichlet B.C., not working.
+# Leave these functions here in case there is more insight in the future.
+# One way for example is https://fenics2021.com/slides/dokken.pdf
+# Currently periodic B.C. is implemented using Lagragian multiplier (not in this module).
+
+def periodic_apply_bc_before(res_fn, problem):
+    """Helper function. Not working.
+    """
+    def fn_dofs_row(sol):
+        for i in range(len(problem.p_node_inds_list_B)):
+            sol = (sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].set
+                  (sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]], unique_indices=True))
+        res = res_fn(sol)
+        return res
+    return fn_dofs_row
+
+
+def periodic_apply_bc_after(fn_dofs, problem):
+    """Helper function. Not working.
+    """
     def fn_dofs_row(dofs):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
         res_dofs = fn_dofs(dofs)
@@ -55,6 +75,28 @@ def periodic_apply_bc(fn_dofs, problem):
                       (-sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]], unique_indices=True))
         return res_sol.reshape(-1)
     return fn_dofs_row
+
+
+def periodic_apply_bc_penalty(fn_dofs, problem):
+    """Penaly approach. Not working.
+    """
+    def fn_dofs_row(dofs):
+        sol = dofs.reshape((problem.num_total_nodes, problem.vec))
+        res_dofs = fn_dofs(dofs)
+        res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
+        for i in range(len(problem.p_node_inds_list_B)):
+            alpha = 1e1
+            sol_A = sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]]
+            sol_B = sol[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]]
+            res_sol = (res_sol.at[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]].add
+                      (alpha*(sol_A - sol_B), unique_indices=True))
+            res_sol = (res_sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].add
+                      (alpha*(sol_B - sol_A), unique_indices=True))
+        return res_sol.reshape(-1)
+    return fn_dofs_row
+
+# End periodic B.C.
+######################################################################################
 
 
 def get_A_fn_linear_fn(dofs, fn):
@@ -97,7 +139,7 @@ def get_flatten_fn(fn_sol, problem):
 def linear_solver(problem):
     """Exp with external jit and see if that makes the solve faster. Seems not...
     """
-    node_inds_list, vec_inds_list, vals_list = problem.node_inds_list, problem.vec_inds_list, problem.vals_list
+    # node_inds_list, vec_inds_list, vals_list = problem.node_inds_list, problem.vec_inds_list, problem.vals_list
     res_fn = problem.compute_residual
     sol = np.zeros((problem.num_total_nodes, problem.vec))
     dofs = sol.reshape(-1)
@@ -112,11 +154,10 @@ def linear_solver(problem):
 
 
 def solver(problem, initial_guess=None, use_linearization_guess=True):
-    res_fn = problem.compute_residual
-    node_inds_list, vec_inds_list, vals_list = problem.node_inds_list, problem.vec_inds_list, problem.vals_list
-    
     print("Start timing")
     start = time.time()
+
+    res_fn = problem.compute_residual
 
     if initial_guess is not None:
         sol = initial_guess
@@ -133,9 +174,6 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
         res_fn_final = row_elimination(res_fn_linear, problem)
         b = -res_fn(sol)
         b = assign_bc(b, problem)
-        if problem.periodic_bc_info is not None:
-            res_fn_final = periodic_apply_bc(res_fn_final, problem)
-            b = assign_zero_bc(b, problem)
         # print(f"step = 0, res l_2 = {np.linalg.norm(res_fn_final(assign_bc(sol).reshape(-1)))}") 
         dofs = assign_bc(sol, problem).reshape(-1)
         dofs, info = jax.scipy.sparse.linalg.bicgstab(res_fn_final, b.reshape(-1), x0=dofs, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
@@ -145,21 +183,22 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
 
     # Newton's method begins here.
     # If the problem is linear, the Newton's iteration will not be triggered.
-    tol = 1e-6
     A_fn = apply_bc(res_fn, problem)
     if problem.periodic_bc_info is not None:
-        A_fn = periodic_apply_bc(A_fn, problem)
+        A_fn = periodic_apply_bc_after(A_fn, problem)
+
     b = -A_fn(dofs)
     res_val = np.linalg.norm(b)
     print(f"Before calling Newton's method, res l_2 = {res_val}") 
+    tol = 1e-6
     while res_val > tol:
         A_fn_linear = get_A_fn_linear_fn(dofs, A_fn)
         debug = False
         if debug:
             # Check onditional number of the matrix
             A_dense = operator_to_matrix(A_fn_linear, problem)
-            print(np.linalg.cond(A_dense))
-            print(np.max(A_dense))
+            print(f"conditional number = {np.linalg.cond(A_dense)}")
+            print(f"max A = {np.max(A_dense)}")
             print(A_dense)
 
         inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab

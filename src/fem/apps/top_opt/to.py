@@ -107,14 +107,6 @@ class LinearElasticity(Laplace):
         return val
 
 
-def save_sol_params(problem, params, sol, sol_file):
-    # TODO: a more general save sol func
-    out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
-    out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
-    out_mesh.cell_data['theta'] = [onp.array(params, dtype=onp.float32)]
-    out_mesh.write(sol_file)
-
-
 def debug():
     root_path = f'src/fem/applications/top_opt/data'
 
@@ -157,7 +149,7 @@ def debug():
         compliance = problem.compute_compliance(neumann_val, sol)
         dofs = sol.reshape(-1)
         vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
-        save_sol_params(problem, params, sol, vtu_path)
+        save_sol(problem, sol, vtu_path, [('theta', params)])
         fn.dofs = dofs
         fn.sol = dofs.reshape((problem.num_total_nodes, problem.vec))
         fn.counter += 1

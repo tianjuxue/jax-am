@@ -10,8 +10,6 @@ from functools import partial
 import gc
 from src.fem.generate_mesh import box_mesh, cylinder_mesh
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -337,7 +335,7 @@ class FEM:
         for i in range(len(location_fns)):
             node_inds = np.argwhere(jax.vmap(location_fns[i])(self.mesh.points)).reshape(-1)
             vec_inds = np.ones_like(node_inds, dtype=np.int32)*vecs[i]
-            values = jax.vmap(value_fns[i])(self.mesh.points[node_inds])
+            values = jax.vmap(value_fns[i])(self.mesh.points[node_inds].reshape(-1, self.dim))
             node_inds_list.append(node_inds)
             vec_inds_list.append(vec_inds)
             vals_list.append(values)
@@ -455,6 +453,8 @@ class Laplace(FEM):
         """Compute residual vector from the weak form.
         The function takes a lot of memory - Thinking about ways for memory saving...
         E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
+
+        TODO: Check if reduced integration helps, and to what extent.
 
         Parameters
         ----------
@@ -588,7 +588,6 @@ class LinearPoisson(Laplace):
         super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info) 
 
 
-
 class NonlinearPoisson(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
@@ -668,7 +667,7 @@ class HyperElasticity(Laplace):
             J = np.linalg.det(F)
             Jinv = J**(-2./3.)
             I1 = np.trace(F.T @ F)
-            energy = ((mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.) 
+            energy = (mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.
             return energy
         P_fn = jax.grad(psi)
 
@@ -806,5 +805,8 @@ class Mesh():
     """
     def __init__(self, points, cells):
         # TODO: Assert that cells must have correct orders 
-        self.points = points
-        self.cells = cells
+        # TODO: Any performance difference?
+        self.points = np.array(points)
+        self.cells = np.array(cells)
+        # self.points = points
+        # self.cells = cells
