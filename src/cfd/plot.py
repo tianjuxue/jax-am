@@ -20,7 +20,7 @@ def plot_lcd_compare(vel,xc,yc,Re=100,legend='calculated'):
     data_u = onp.genfromtxt('./data/u_Ghia_1982.csv',delimiter=',',skip_header=1)
     data_v = onp.genfromtxt('./data/v_Ghia_1982.csv',delimiter=',',skip_header=1)
 
-    Re_num = onp.array([100,400,1000,3200,5000,7500,10000])
+    Re_num = onp.array([-1,100,400,1000,3200,5000,7500,10000])
     ind = onp.where(Re_num==Re)[0]
 
     if ind.size == 0:
