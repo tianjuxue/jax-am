@@ -1,9 +1,14 @@
 import meshio
+import os
 import numpy as onp
 
 
 def save_sol(problem, sol, sol_file, cell_infos=None):
-    # TODO: create a directory if not exists
+    # Create a directory if not exists
+    sol_dir = os.path.dirname(sol_file)
+    if not os.path.exists(sol_dir):
+        os.makedirs(sol_dir)
+
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
     out_mesh.point_data['sol'] = onp.array(sol, dtype=onp.float32)
     if cell_infos is not None:

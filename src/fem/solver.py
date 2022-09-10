@@ -184,9 +184,6 @@ def solver(problem, initial_guess=None, use_linearization_guess=True):
     # Newton's method begins here.
     # If the problem is linear, the Newton's iteration will not be triggered.
     A_fn = apply_bc(res_fn, problem)
-    if problem.periodic_bc_info is not None:
-        A_fn = periodic_apply_bc_after(A_fn, problem)
-
     b = -A_fn(dofs)
     res_val = np.linalg.norm(b)
     print(f"Before calling Newton's method, res l_2 = {res_val}") 

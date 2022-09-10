@@ -6,20 +6,21 @@ import os
 import glob
 from functools import partial
 from scipy.stats import qmc
-
 from src.fem.apps.multi_scale.arguments import args
-
-os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
-
 from src.fem.generate_mesh import box_mesh
-from src.fem.jax_fem import Mesh, LinearElasticity, HyperElasticity, Laplace
+from src.fem.jax_fem import Mesh, Laplace
 from src.fem.solver import solver, assign_bc, get_A_fn_linear_fn, apply_bc
 from src.fem.utils import save_sol
 from src.fem.apps.multi_scale.utils import flat_to_tensor
+from src.fem.apps.multi_scale.fem_model import HyperElasticity
 
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 
 
 def aug_solve(problem, initial_guess=None):
+    """Periodic solver with Lagrangian multiplier method
+    Kind of slow, maybe due to lack of preconditioner...
+    """
     print(f"Start timing, H_bar = \n{problem.H_bar}")
     start = time.time()
 
@@ -100,85 +101,11 @@ def aug_solve(problem, initial_guess=None):
         print(f"step = {linear_solve_step}, res l_2 = {res_val}") 
 
     sol = aug_dofs[:num_dofs].reshape((problem.num_total_nodes, problem.vec))
-
-    # print(f"lmbda = {aug_dofs[num_dofs:]}")
-
     end = time.time()
     solve_time = end - start
     print(f"Solve took {solve_time} [s], finished in {linear_solve_step} linear solve steps")
 
     return sol
-
-
-class RVE(Laplace):
-    """Solves for the fluctuation field, not the displacement field.
-    """
-    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
-        self.name = name
-        self.vec = 3
-        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info)
-        self.H_bar = None
-        self.physical_quad_points = self.get_physical_quad_points()
-        self.E, self.nu = self.compute_moduli()
-
-    def stress_strain_fns(self):
-        def psi(F, E, nu):
-            # E = 70e3
-            # nu = 0.3
-            mu = E/(2.*(1. + nu))
-            kappa = E/(3.*(1. - 2.*nu))
-            J = np.linalg.det(F)
-            Jinv = J**(-2./3.)
-            I1 = np.trace(F.T @ F)
-            energy = (mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2. 
-            return energy
-        P_fn = jax.grad(psi)
-
-        def first_PK_stress(u_grad, E, nu):
-            I = np.eye(self.dim)
-            F = u_grad + I
-            P = P_fn(F, E, nu)
-            return P
-        vmap_stress = jax.vmap(first_PK_stress)
-        vmap_energy = jax.vmap(psi)
-        return vmap_stress, vmap_energy
-
-    def compute_physics(self, sol, u_grads):
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim) + self.H_bar[None, :, :]
-        vmap_stress, _ = self.stress_strain_fns()
-        sigmas = vmap_stress(u_grads_reshape, self.E, self.nu).reshape(u_grads.shape)
-        return sigmas
-
-    def compute_moduli(self):
-        # TODO: a lot of redundant code here
-        center = np.array([args.L/2., args.L/2., args.L/2.])
-        def E_map(point):
-            E = np.where(np.max(np.absolute(point - center)) < args.L*0.3, 1e3, 1e2) # 1e3, 1e2
-            # E = np.where(point[0] < 0.5, 1e3, 1e3) # 1e3, 1e2
-            return E
-
-        def nu_map(point):
-            nu = np.where(np.max(np.absolute(point - center)) < args.L*0.3, 0.3, 0.4) # 0.3, 0.4
-            return nu
-
-        E = jax.vmap(jax.vmap(E_map))(self.physical_quad_points).reshape(-1)
-        nu = jax.vmap(jax.vmap(nu_map))(self.physical_quad_points).reshape(-1)
-
-        return E, nu
-
-    def fluc_to_disp(self, sol_fluc):
-        sol_disp = (self.H_bar @ self.points.T).T + sol_fluc
-        return sol_disp
-
-    def compute_energy(self, sol):
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
-        u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
-        u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim) 
-        F_reshape = u_grads.reshape(-1, self.vec, self.dim) + self.H_bar[None, :, :] + np.eye(self.dim)[None, :, :]
-        _, vmap_energy  = self.stress_strain_fns()
-        psi = vmap_energy(F_reshape, self.E, self.nu).reshape(u_grads.shape[:2]) # (num_cells, num_quads)
-        energy = np.sum(psi * self.JxW)
-        return energy
 
 
 def compute_periodic_inds(location_fns_A, location_fns_B, mappings, vecs, mesh):
@@ -212,8 +139,7 @@ def compute_periodic_inds(location_fns_A, location_fns_B, mappings, vecs, mesh):
     return p_node_inds_list_A, p_node_inds_list_B, p_vec_inds_list
 
 
-def rve_problem():
-    problem_name = "rve"
+def rve_problem(problem_name='rve'):
     L = args.L
     meshio_mesh = box_mesh(10, 10, 10, L, L, L)
     jax_mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
@@ -265,22 +191,13 @@ def rve_problem():
     vecs = [0, 1, 2]*3
 
     periodic_bc_info = compute_periodic_inds(location_fns_A, location_fns_B, mappings, vecs, jax_mesh)
-    problem = RVE(f"{problem_name}", jax_mesh, dirichlet_bc_info=dirichlet_bc_info, periodic_bc_info=periodic_bc_info)
+    problem = HyperElasticity(f"{problem_name}", jax_mesh, mode='rve', dirichlet_bc_info=dirichlet_bc_info, periodic_bc_info=periodic_bc_info)
 
     return problem
 
 
-def debug_periodic(problem, sol_fluc):
-    p_node_inds_list_A, p_node_inds_list_B, p_vec_inds_list = problem.periodic_bc_info
-    a = sol_fluc[p_node_inds_list_A[0], p_vec_inds_list[0]]
-    b = sol_fluc[p_node_inds_list_B[0], p_vec_inds_list[0]]
-    ap = problem.mesh.points[p_node_inds_list_A[0]]
-    bp = problem.mesh.points[p_node_inds_list_B[0]]
-    print(np.hstack((ap, bp, a[:, None], b[:, None]))[:10])
-
-
 def exp():
-    problem = rve_problem()
+    problem = rve_problem('rve_debug')
     H_bar = np.array([[-0.009, 0., 0.],
                       [0., -0.009, 0.],
                       [0., 0., 0.025]])
@@ -305,7 +222,6 @@ def exp():
     #     problem.H_bar = ratio * H_bar
     #     sol_fluc = aug_solve(problem, initial_guess=sol_fluc)
 
-
     energy = problem.compute_energy(sol_fluc)
     print(f"Final energy = {energy}")
 
@@ -316,8 +232,12 @@ def exp():
     jax_vtu_path = f"src/fem/apps/multi_scale/data/vtk/{problem.name}/sol_fluc.vtu"
     save_sol(problem, sol_fluc, jax_vtu_path)
 
-    debug_periodic(problem, sol_fluc)
-
+    p_node_inds_list_A, p_node_inds_list_B, p_vec_inds_list = problem.periodic_bc_info
+    a = sol_fluc[p_node_inds_list_A[0], p_vec_inds_list[0]]
+    b = sol_fluc[p_node_inds_list_B[0], p_vec_inds_list[0]]
+    ap = problem.mesh.points[p_node_inds_list_A[0]]
+    bp = problem.mesh.points[p_node_inds_list_B[0]]
+    print(np.hstack((ap, bp, a[:, None], b[:, None]))[:10])
 
 
 def solve_rve_problem(problem, sample_H_bar):
@@ -340,15 +260,17 @@ def generate_samples():
     dim_H = 6
     sampler = qmc.Sobol(d=dim_H, scramble=False, seed=0)
     sample = sampler.random_base2(m=10)
-    l_bounds = [-0.2]*dim_H
-    u_bounds = [0.2]*dim_H
+    lower_val = -0.2
+    upper_val = 0.2
+    l_bounds = [lower_val]*dim_H
+    u_bounds = [upper_val]*dim_H
     scaled_sample = qmc.scale(sample, l_bounds, u_bounds)
     return scaled_sample
  
 
 def collect_data():
     problem = rve_problem()
-    date = f"09052022"
+    date = f"09102022"
     root_numpy = os.path.join(f"src/fem/apps/multi_scale/data/numpy/training", date)
     if not os.path.exists(root_numpy):
         os.makedirs(root_numpy)
@@ -360,14 +282,6 @@ def collect_data():
     samples = generate_samples()
     complete = [i for i in range(len(samples))]
 
-    # print(files)
-    # print(os.path.exists(files[0]))
-    # print(f"{int(files[0][-9:-4]):05d}")
-    # print(todo)
-    print(args.device)
-    print(samples[-10:])
-    # exit()
-
     onp.random.seed(args.device)
     while True:
         files = glob.glob(root_numpy + f"/*.npy")
@@ -376,13 +290,14 @@ def collect_data():
         if len(todo) == 0:
             break
         chosen_ind = onp.random.choice(todo)
-        print(f"Solving problem # {chosen_ind} on device = {args.device}, done = {len(done)}, todo = {len(todo)}, total = {len(complete)} ")
+        print(f"\nSolving problem # {chosen_ind} on device = {args.device}, done = {len(done)}, todo = {len(todo)}, total = {len(complete)} ")
         sample_H_bar = samples[chosen_ind]
         sol_fluc, data = solve_rve_problem(problem, sample_H_bar)
         if np.any(np.isnan(data)):
             print(f"######################################### Failed solve, check why!")
             onp.savetxt(os.path.join(root_numpy, f"{chosen_ind:05d}.txt"), sample_H_bar)
         else:
+            print(f"Saving data = {data}")
             onp.save(os.path.join(root_numpy, f"{chosen_ind:05d}.npy"), data)
 
         sol_disp = problem.fluc_to_disp(sol_fluc)
@@ -390,10 +305,6 @@ def collect_data():
         save_sol(problem, sol_disp, jax_vtu_path)
 
 
-    # print(f"step {i + 1} of {len(ts[1:])}, unix timestamp = {time.time()}")
-
-
 if __name__=="__main__":
-    # exp()
-    # collect_data()
     exp()
+    # collect_data()
