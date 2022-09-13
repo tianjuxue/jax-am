@@ -11,5 +11,3 @@ def flat_to_tensor(X_flat):
 
 def tensor_to_flat(X_tensor):
     return np.array([X_tensor[0, 0], X_tensor[1, 1], X_tensor[2, 2], X_tensor[0, 1], X_tensor[0, 2], X_tensor[1, 2]])
-
-

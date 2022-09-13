@@ -7,19 +7,10 @@ import time
 import os
 import pickle
 import glob
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
-
 from src.fem.apps.multi_scale.arguments import args
 from src.fem.apps.multi_scale.utils import flat_to_tensor, tensor_to_flat
-
-import matplotlib.pyplot as plt
-
-# Latex style plot
-plt.rcParams.update({
-    "text.latex.preamble": r"\usepackage{amsmath}",
-    "text.usetex": True,
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Helvetica"]})
 
 
 def H_to_C(H_flat):
@@ -30,26 +21,21 @@ def H_to_C(H_flat):
     return C_flat, C
 
 
+def transform_data(H, energy_density):
+    data = onp.array(np.hstack((jax.vmap(H_to_C)(H)[0], energy_density))) 
+    print(f"For training, data.shape = {data.shape}")
+    return data
+
+
 def load_data():
     file_path = f"src/fem/apps/multi_scale/data/numpy/training"
-    xy_file = os.path.join(file_path, "data_xy.npy")
-
-    if os.path.isfile(xy_file) and False:
-        data_xy = onp.load(xy_file)
-    else:
-        data_files = glob.glob(f"{file_path}/09052022/*.npy")
-        assert len(data_files) > 0, f"No data file found in {file_path}!"
-        data_xy = onp.stack([onp.load(f) for f in data_files])
-        onp.save(xy_file, data_xy)
-
+    data_files = glob.glob(f"{file_path}/09052022/*.npy")
+    assert len(data_files) > 0, f"No data file found in {file_path}!"
+    data_xy = onp.stack([onp.load(f) for f in data_files])
     print(f"data_xy.shape = {data_xy.shape}")
-
     H = data_xy[:, :-1]
     energy_density = data_xy[:, -1:]/(args.L**3)
-
     return H, energy_density
-
-
 
 
 class EnergyDataset(Dataset):
@@ -131,8 +117,6 @@ def evaluate_errors(partial_data, train_data, batch_forward):
     return scaled_MSE, scaled_true_vals, scaled_preds
 
 
-
-
 def polynomial_hyperelastic():
     H, y_true = load_data()
     C = jax.vmap(H_to_C)(H)[1]
@@ -178,7 +162,6 @@ def polynomial_hyperelastic():
     # plt.plot(I1 - 3., y_true.reshape(-1), color='black', marker='o', markersize=4, linestyle='None')  
     # plt.show()
 
-
     ref_vals = np.linspace(0., 40., 100)
     plt.plot(ref_vals, ref_vals, '--', linewidth=2, color='black')
     plt.plot(y_true, y_pred, color='red', marker='o', markersize=4, linestyle='None')  
@@ -186,16 +169,16 @@ def polynomial_hyperelastic():
     plt.show()
 
 
-def get_pickle_path():
+def get_pickle_path(hyperparam):
     root_pickle = f"src/fem/apps/multi_scale/data/pickle"
     if not os.path.exists(root_pickle):
         os.makedirs(root_pickle)
-    pickle_path = os.path.join(root_pickle, 'mlp_weights.pkl')
+    pickle_path = os.path.join(root_pickle, f"{hyperparam}_weights.pkl")
     return pickle_path
 
 
-def get_nn_batch_forward():
-    pickle_path = get_pickle_path()
+def get_nn_batch_forward(hyperparam):
+    pickle_path = get_pickle_path(hyperparam)
     with open(pickle_path, 'rb') as handle:
         params = pickle.load(handle)  
     init_random_params, nn_batch_forward = get_mlp()
@@ -203,12 +186,11 @@ def get_nn_batch_forward():
     return batch_forward
 
 
-def mlp_surrogate(train_data, train_loader, validation_data=None): 
+def train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam): 
     opt_init, opt_update, get_params = optimizers.adam(step_size=args.lr)
     init_random_params, nn_batch_forward = get_mlp()
     output_shape, params = init_random_params(jax.random.PRNGKey(0), (-1, args.input_size))
     opt_state = opt_init(params)
-    
     batch_forward = lambda x_new: nn_batch_forward(params, x_new).reshape(-1)
 
     def loss_fn(params, x, y):
@@ -219,63 +201,95 @@ def mlp_surrogate(train_data, train_loader, validation_data=None):
 
     @jax.jit
     def update(params, x, y, opt_state):
-        """ Compute the gradient for a batch and update the parameters """
+        """Compute the gradient for a batch and update the parameters"""
         value, grads = jax.value_and_grad(loss_fn)(params, x, y)
         opt_state = opt_update(0, grads, opt_state)
         return get_params(opt_state), opt_state, value
 
-   
+    train_val_losses = []
     num_epochs = 20000
     for epoch in range(num_epochs):
-        # training_loss = 0.
-        # validatin_loss = 0.
         for batch_idx, (x, y) in enumerate(train_loader):
             params, opt_state, loss = update(params, np.array(x), np.array(y), opt_state)
-            # training_loss = training_loss + loss
-
         if epoch % 100 == 0:
             training_smse, _, _ = evaluate_errors(train_data, train_data, batch_forward)
-            if validation_data is not None:
-                validatin_smse, _, _ = evaluate_errors(validation_data, train_data, batch_forward)
-                print(f"Epoch {epoch} training_smse = {training_smse}, Epoch {epoch} validatin_smse = {validatin_smse}")
-            else:
-                print(f"Epoch {epoch} training_smse = {training_smse}")                    
-    
-    pickle_path = get_pickle_path()
+            validatin_smse, _, _ = evaluate_errors(validation_data, train_data, batch_forward)
+            train_val_losses.append([training_smse, validatin_smse])
+            print(f"\nEpoch {epoch} training_smse = {training_smse}, validatin_smse = {validatin_smse}")
+    train_val_losses = onp.array(train_val_losses)
+                          
+    pickle_path = get_pickle_path(hyperparam)
     with open(pickle_path, 'wb') as handle:
         pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+
+    onp.save(f"src/fem/apps/multi_scale/data/numpy/training/losses/{hyperparam}.npy", train_val_losses)
 
     return  batch_forward
 
 
+def train_val_test():
+    hyperparams = ['MLP1', 'MLP2', 'MLP3']
+    width_hiddens = [32, 64, 128]
+    n_hiddens = [4, 8, 16]
+    lrs = [1e-4, 1e-4, 1e-4]
+
+    H, energy_density = load_data()
+    data = transform_data(H, energy_density)
+    train_data, validation_data, test_data, train_loader, validation_loader, test_loader = shuffle_data(data)
+
+    compute = True
+    if compute:
+        for i in range(len(hyperparams)):
+            args.width_hidden = width_hiddens[i]
+            args.n_hidden = n_hiddens[i]
+            args.lr = lrs[i]
+            train_mlp_surrogate(train_data, train_loader, validation_data, hyperparams[i])
+ 
+    for i in range(len(hyperparam)):
+        batch_forward = get_nn_batch_forward(hyperparams[i])
+        test_scaled_MSE, test_scaled_true_vals, test_scaled_preds = evaluate_errors(test_data, train_data, batch_forward)
+        val_scaled_MSE, val_scaled_true_vals, val_scaled_preds = evaluate_errors(validation_data, train_data, batch_forward)
+        print(f"test scaled MSE = {test_scaled_MSE} for model {hyperparams[i]}")
+        print(f"validation scaled MSE = {val_scaled_MSE} for model {hyperparams[i]}")
+        train_smse, val_smse = onp.load(f"src/fem/apps/multi_scale/data/numpy/training/losses/{hyperparam}.npy").T
+        epoch = np.arange(len(train_smse))
+        show_train_curve(train_smse, val_smse)
+        show_yy_plot(partial_data, train_data, hyperparam)
 
 
-def show_yy_plot(validation_data, train_data):
-    batch_forward = get_nn_nn_batch_forward()
-    evaluate_errors(validation_data, train_data, batch_forward)
-    y_pred = batch_forward(validation_data[:, :-1]).reshape(-1)
-    y_true = validation_data[:, -1]
+def show_train_curve(train_smse, val_smse):
+    fig = plt.figure(figsize=(8, 6)) 
+    plt.plot(epoch, train_smse, '-', linewidth=2, color='blue')
+    plt.plot(epoch, val_smse, '-', linewidth=2, color='red')
+
+
+def show_yy_plot(partial_data, train_data, hyperparam):
+    batch_forward = get_nn_batch_forward()
+    evaluate_errors(partial_data, train_data, batch_forward)
+    y_pred = batch_forward(partial_data[:, :-1]).reshape(-1)
+    y_true = partial_data[:, -1]
     ref_vals = np.linspace(0., 80., 100)
+    fig = plt.figure() 
     plt.plot(ref_vals, ref_vals, '--', linewidth=2, color='black')
     plt.plot(y_true, y_pred, color='red', marker='o', markersize=4, linestyle='None')  
     plt.xlabel(f"True Energy", fontsize=20)
     plt.ylabel(f"Predicted Energy", fontsize=20)
     plt.tick_params(labelsize=18)
     plt.axis('equal')
-    pdf_root = f"src/fem/apps/multi_scale/data/pdf"
-    plt.savefig(os.path.join(pdf_root, 'pred_true.pdf'), bbox_inches='tight')
-    plt.show()
+    pdf_root = f"src/fem/apps/multi_scale/data/pdf/training"
+    plt.savefig(os.path.join(pdf_root, f"pred_true_{hyperparam}.pdf"), bbox_inches='tight')
 
 
-def main():
+def exp():
+    hyperparam = 'default'
     H, energy_density = load_data()
-    data = onp.array(np.hstack((jax.vmap(H_to_C)(H)[0], energy_density))) 
-    print(f"data.shape = {data.shape}")
+    data = transform_data(H, energy_density)
     train_data, validation_data, test_data, train_loader, validation_loader, test_loader = shuffle_data(data) 
-    # batch_forward = mlp_surrogate(train_data, train_loader, validation_data)
-    show_yy_plot(validation_data, train_data)
+    batch_forward = train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam)
+    show_yy_plot(validation_data, train_data, hyperparam)
  
 
 if __name__ == '__main__':
-    main()
+    exp()
     # polynomial_hyperelastic()
+    # plt.show()
