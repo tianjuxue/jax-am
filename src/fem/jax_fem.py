@@ -58,6 +58,7 @@ class FEM:
         self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
         print(f"Done pre-computations")
+        print(f"Solving a problem with {len(self.cells)} cells, {self.num_total_nodes}x{self.vec} = {self.num_total_nodes*self.vec} dofs.")
 
     def get_shape_val_functions(self):
         """Hard-coded first order shape functions in the reference domain.
@@ -447,6 +448,7 @@ class Laplace(FEM):
 
     def compute_residual(self, sol):
         """Compute residual vector from the weak form.
+        This is the most central function in our FEM implemnetation.
         The function takes a lot of memory - Thinking about ways for memory saving...
         E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
 
@@ -462,8 +464,8 @@ class Laplace(FEM):
         res: ndarray
             (num_total_nodes, vec) 
         """
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
-        u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
+        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
+        u_grads = sol[self.cells][:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
         u_physics = self.compute_physics(sol, u_grads) # (num_cells, num_quads, vec, dim)  
         # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
@@ -785,6 +787,7 @@ class Plasticity(Laplace):
         sigmas = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old).reshape(u_grads.shape)
         epsilons = vmap_strain(u_grads_reshape)
 
+        # TODO: check if the reshape here is unnecessary
         self.sigmas_old = sigmas.reshape(self.sigmas_old.shape)
         self.epsilons_old = epsilons.reshape(self.epsilons_old.shape)
 

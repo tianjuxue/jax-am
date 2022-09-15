@@ -18,13 +18,13 @@ class HyperElasticity(Laplace):
         if self.mode == 'rve':
             self.H_bar = None
             self.physical_quad_points = self.get_physical_quad_points()
-            self.E, self.nu = self.compute_moduli_rve()
+            self.E, self.nu = self.compute_moduli()
             self.periodic_bc_info = periodic_bc_info
             self.p_node_inds_list_A, self.p_node_inds_list_B, self.p_vec_inds_list = self.periodic_bc_info
             self.stress_strain_fns = self.stress_strain_fns_rve_dns
         elif self.mode == 'dns':
             self.physical_quad_points = self.get_physical_quad_points()
-            self.E, self.nu = self.compute_moduli_dns()
+            self.E, self.nu = self.compute_moduli()
             self.stress_strain_fns = self.stress_strain_fns_rve_dns
         elif self.mode == 'nn':
             hyperparam = 'default'
@@ -97,29 +97,36 @@ class HyperElasticity(Laplace):
         sol_disp = (self.H_bar @ self.points.T).T + sol_fluc
         return sol_disp
 
-    def compute_moduli_rve(self):
-        center = np.array([args.L/2., args.L/2., args.L/2.])
-        def E_map(point):
-            E = np.where(np.max(np.absolute(point - center)) < args.L*args.ratio, args.E_in, args.E_out) # 1e3, 1e2
-            return E
-        def nu_map(point):
-            nu = np.where(np.max(np.absolute(point - center)) < args.L*args.ratio, args.nu_in, args.nu_out) # 0.3, 0.4
-            return nu
-        E = jax.vmap(jax.vmap(E_map))(self.physical_quad_points).reshape(-1)
-        nu = jax.vmap(jax.vmap(nu_map))(self.physical_quad_points).reshape(-1)
+    def compute_moduli(self):
+        def moduli_map(point):
+            inclusion = False
+            for i in range(args.units_x):
+                for j in range(args.units_y):
+                    for k in range(args.units_z):
+                        center = np.array([(i + 0.5)*args.L, (j + 0.5)*args.L, (k + 0.5)*args.L])
+                        hit = np.max(np.absolute(point - center)) < args.L*args.ratio
+                        inclusion = np.logical_or(inclusion, hit)
+            E = np.where(inclusion, args.E_in, args.E_out)
+            nu = np.where(inclusion, args.nu_in, args.nu_out)
+            return np.array([E, nu])
+
+        E, nu = jax.vmap(jax.vmap(moduli_map))(self.physical_quad_points).reshape(-1, 2).T
         return E, nu
 
-    def compute_moduli_dns(self):
-        center = np.array([args.L/2., args.L/2., args.L/2.])
-        def E_map(point):
-            E = np.where(np.max(np.absolute(point - center)) < args.L*args.ratio, args.E_in, args.E_out) # 1e3, 1e2
-            return E
 
-        def nu_map(point):
-            nu = np.where(np.max(np.absolute(point - center)) < args.L*args.ratio, args.nu_in, args.nu_out) # 0.3, 0.4
-            return nu
+    def compute_traction(self, location_fn, sol):
+        """Not working.
+        """
+        def traction_fn(u_grads):
+            # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
+            vmap_stress, _ = self.stress_strain_fns()
+            sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
+            # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
+            # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
+            normals = np.array([0., 0., 1.]).reshape((self.dim, 1))
+            traction = (sigmas @ normals[None, None, :, :])[:, :, :, 0]
+            return traction
 
-        E = jax.vmap(jax.vmap(E_map))(self.physical_quad_points).reshape(-1)
-        nu = jax.vmap(jax.vmap(nu_map))(self.physical_quad_points).reshape(-1)
-
-        return E, nu
+        traction_integral_val = self.surface_integral(location_fn, traction_fn, sol)
+        return traction_integral_val

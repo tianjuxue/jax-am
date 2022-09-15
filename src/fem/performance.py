@@ -1,12 +1,15 @@
 import jax
 import jax.numpy as np
 import numpy as onp
+import os
 import matplotlib.pyplot as plt
 import time
 from src.fem.jax_fem import Mesh, LinearElasticity
 from src.fem.solver import solver, linear_solver
 from src.fem.generate_mesh import box_mesh
 from src.fem.utils import save_sol
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 # Latex style plot
 plt.rcParams.update({
@@ -17,7 +20,8 @@ plt.rcParams.update({
 
 
 def linear_elasticity():
-    meshio_mesh = box_mesh(100, 100, 100)
+    # meshio_mesh = box_mesh(100, 100, 100)
+    meshio_mesh = box_mesh(50, 50, 50)
     mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def left(point):
@@ -43,7 +47,7 @@ def linear_elasticity():
     print("Start timing")
     start = time.time()
     # sol = linear_solver(problem)
-    sol = solver(problem)
+    sol = solver(problem, use_linearization_guess=False)
     end = time.time()
     solve_time = end - start
     print(f"Solve took {solve_time} [s]")

@@ -112,10 +112,17 @@ def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
     mesh = meshio.read(mesh_file)
     points = mesh.points # (num_total_nodes, dim)
     cells =  mesh.cells_dict['hexahedron'] # (num_cells, num_nodes)
+
+    # The mesh somehow has two redundant points...
+    points = onp.vstack((points[1:14], points[15:]))
+    cells = onp.where(cells > 14, cells - 2, cells - 1)
+
     # print(points[:10])
     # print(f"Number of total vertices = {len(points)}")
     # print(f"Number of total cells = {len(cells)}")
     # print(onp.take(points, cells[:3], axis=0))
+
+    mesh = meshio.Mesh(points, [("hexahedron", cells)])
 
     return mesh
 

@@ -19,6 +19,7 @@ onp.set_printoptions(precision=10)
 # Manage arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--L', type=float, default=1.)
+parser.add_argument('--num_hex', type=int, default=10)
 parser.add_argument('--device', type=int, default=0)
 parser.add_argument('--E_in', type=float, default=1e3)
 parser.add_argument('--E_out', type=float, default=1e2)
@@ -38,8 +39,8 @@ args = parser.parse_args()
 
 
 # Latex style plot
-plt.rcParams.update({
-    "text.latex.preamble": r"\usepackage{amsmath}",
-    "text.usetex": True,
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Helvetica"]})
+# plt.rcParams.update({
+#     "text.latex.preamble": r"\usepackage{amsmath}",
+#     "text.usetex": True,
+#     "font.family": "sans-serif",
+#     "font.sans-serif": ["Helvetica"]})
