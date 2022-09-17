@@ -5,7 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import time
 from src.fem.jax_fem import Mesh, LinearElasticity
-from src.fem.solver import solver, linear_solver
+from src.fem.solver import solver
 from src.fem.generate_mesh import box_mesh
 from src.fem.utils import save_sol
 
@@ -20,8 +20,8 @@ plt.rcParams.update({
 
 
 def linear_elasticity():
-    # meshio_mesh = box_mesh(100, 100, 100)
-    meshio_mesh = box_mesh(50, 50, 50)
+    meshio_mesh = box_mesh(100, 100, 100)
+    # meshio_mesh = box_mesh(50, 50, 50)
     mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def left(point):
@@ -43,26 +43,9 @@ def linear_elasticity():
  
     problem = LinearElasticity('linear_elasticity', mesh, dirichlet_bc_info=dirichlet_bc_info)
  
+
+    sol = solver(problem, linear=True)
  
-    print("Start timing")
-    start = time.time()
-    # sol = linear_solver(problem)
-    sol = solver(problem, use_linearization_guess=False)
-    end = time.time()
-    solve_time = end - start
-    print(f"Solve took {solve_time} [s]")
-
-
-
-    # print("Start timing")
-    # start = time.time()
-    # # sol = linear_solver(problem)
-    # sol = solver(problem)
-    # end = time.time()
-    # solve_time = end - start
-    # print(f"Solve took {solve_time} [s]")
-
-
 
 def performance_test():
     # Problems = [LinearElasticity, LinearPoisson, NonelinearPoisson]

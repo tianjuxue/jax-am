@@ -10,7 +10,7 @@ def apply_bc(res_fn, problem):
         """Apply Dirichlet boundary conditions
         """
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        res = res_fn(sol)
+        res = res_fn(dofs).reshape(sol.shape)
         for i in range(len(problem.node_inds_list)):
             res = (res.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set
                    (sol[problem.node_inds_list[i], problem.vec_inds_list[i]], unique_indices=True))
@@ -19,84 +19,45 @@ def apply_bc(res_fn, problem):
     return A_fn
 
 
-def row_elimination(fn_dofs, problem):
+def row_elimination(res_fn, problem):
     def fn_dofs_row(dofs):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        res_dofs = fn_dofs(dofs)
-        res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
+        res = res_fn(dofs).reshape(sol.shape)
         for i in range(len(problem.node_inds_list)):
-            res_sol = (res_sol.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set
-                      (sol[problem.node_inds_list[i], problem.vec_inds_list[i]], unique_indices=True))
-        return res_sol.reshape(-1)
+            res = (res.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set
+                   (sol[problem.node_inds_list[i], problem.vec_inds_list[i]], unique_indices=True))
+        return res.reshape(-1)
     return fn_dofs_row
 
 
-def assign_bc(sol, problem):
+def assign_bc(dofs, problem):
+    sol = dofs.reshape((problem.num_total_nodes, problem.vec))
     for i in range(len(problem.node_inds_list)):
         sol = sol.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set(problem.vals_list[i])
-    return sol
+    return sol.reshape(-1)
 
 
-def assign_zero_bc(sol, problem):
-    for i in range(len(problem.p_node_inds_list_B)):
-        sol = sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].set(0.)
-    return sol
+def assign_zero_bc(dofs, problem):
+    sol = dofs.reshape((problem.num_total_nodes, problem.vec))
+    for i in range(len(problem.node_inds_list)):
+        sol = sol.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set(0.)
+    return sol.reshape(-1)
+
+ 
+ 
+def assign_ones_bc(dofs, problem):
+    sol = dofs.reshape((problem.num_total_nodes, problem.vec))
+    for i in range(len(problem.node_inds_list)):
+        sol = sol.at[problem.node_inds_list[i], problem.vec_inds_list[i]].set(1.)
+    return sol.reshape(-1)
 
 
-######################################################################################
-# Tyring impoising periodic B.C. like Dirichlet B.C., not working.
-# Leave these functions here in case there is more insight in the future.
-# One way for example is https://fenics2021.com/slides/dokken.pdf
-# Currently periodic B.C. is implemented using Lagragian multiplier (not in this module).
-
-def periodic_apply_bc_before(res_fn, problem):
-    """Helper function. Not working.
-    """
-    def fn_dofs_row(sol):
-        for i in range(len(problem.p_node_inds_list_B)):
-            sol = (sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].set
-                  (sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]], unique_indices=True))
-        res = res_fn(sol)
-        return res
-    return fn_dofs_row
-
-
-def periodic_apply_bc_after(fn_dofs, problem):
-    """Helper function. Not working.
-    """
-    def fn_dofs_row(dofs):
+def get_flatten_fn(fn_sol, problem):
+    def fn_dofs(dofs):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        res_dofs = fn_dofs(dofs)
-        res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
-        for i in range(len(problem.p_node_inds_list_B)):
-            res_sol = (res_sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].set
-                      (sol[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]], unique_indices=True))
-            res_sol = (res_sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].add
-                      (-sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]], unique_indices=True))
-        return res_sol.reshape(-1)
-    return fn_dofs_row
-
-
-def periodic_apply_bc_penalty(fn_dofs, problem):
-    """Penaly approach. Not working.
-    """
-    def fn_dofs_row(dofs):
-        sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        res_dofs = fn_dofs(dofs)
-        res_sol = res_dofs.reshape((problem.num_total_nodes, problem.vec))
-        for i in range(len(problem.p_node_inds_list_B)):
-            alpha = 1e1
-            sol_A = sol[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]]
-            sol_B = sol[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]]
-            res_sol = (res_sol.at[problem.p_node_inds_list_A[i], problem.p_vec_inds_list[i]].add
-                      (alpha*(sol_A - sol_B), unique_indices=True))
-            res_sol = (res_sol.at[problem.p_node_inds_list_B[i], problem.p_vec_inds_list[i]].add
-                      (alpha*(sol_B - sol_A), unique_indices=True))
-        return res_sol.reshape(-1)
-    return fn_dofs_row
-
-# End periodic B.C.
-######################################################################################
+        val_sol = fn_sol(sol)
+        return val_sol.reshape(-1)
+    return fn_dofs
 
 
 def get_A_fn_linear_fn(dofs, fn):
@@ -127,88 +88,116 @@ def operator_to_matrix(operator_fn, problem):
     return J
 
 
-def get_flatten_fn(fn_sol, problem):
-    def fn_dofs(dofs):
-        sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        val_sol = fn_sol(sol)
-        return val_sol.reshape(-1)
-    return fn_dofs
+def jacobi_preconditioner(problem):
+    C_sub = []
+    for i in range(problem.vec):
+        # (num_cells*num_quads, dim, dim)
+        C_sub.append(problem.C[:, i*problem.dim:(i+1)*problem.dim, i*problem.dim:(i+1)*problem.dim])
+    # (num_cells, num_quads, num_nodes, dim) -> (num_cells*num_quads, num_nodes, 1, dim)
+    shape_grads_reshape = problem.shape_grads.reshape(-1, problem.num_nodes, 1, problem.dim)
+    vals = []
+    for i in range(problem.vec):
+    # (num_cells*num_quads, num_nodes, 1, dim) @ (num_cells*num_quads, 1, dim, dim) @ (num_cells*num_quads, num_nodes, dim, 1)
+    # (num_cells*num_quads, num_nodes) -> (num_cells, num_quads, num_nodes) -> (num_cells, num_nodes)
+        vals.append(np.sum((shape_grads_reshape @ C_sub[i][:, None, :, :] @ np.transpose(shape_grads_reshape, 
+                   axes=(0, 1, 3, 2))).reshape(problem.num_cells, problem.num_quads, problem.num_nodes) * problem.JxW[:, :, None], axis=1))
+    # (vec, num_cells, num_nodes) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+    vals = np.transpose(np.stack(vals), axes=(1, 2, 0)).reshape(-1, problem.vec)
+    jacobi = np.zeros((problem.num_total_nodes, problem.vec))
+    jacobi = jacobi.at[problem.cells.reshape(-1)].add(vals)
+
+    jacobi = assign_ones_bc(jacobi.reshape(-1), problem) 
+    return jacobi
 
 
-@partial(jax.jit, static_argnums=(0,))
-def linear_solver(problem):
-    """Exp with external jit and see if that makes the solve faster. Seems not...
+def get_jacobi_precond(jacobi):
+    def jacobi_precond(x):
+        return x * (1./jacobi)
+    return jacobi_precond
+
+
+def test_jacobi_precond(problem, dofs, jacobi, A_fn):
+    # TODO
+    for ind in range(len(dofs)):
+        test_vec = np.zeros(problem.num_total_nodes*problem.vec)
+        test_vec = test_vec.at[ind].set(1.)
+        print(f"{A_fn(test_vec)[ind]}, {jacobi[ind]}, ratio = {A_fn(test_vec)[ind]/jacobi[ind]}")
+
+    print(f"compute jacobi preconditioner")
+    print(f"np.min(jacobi) = {np.min(jacobi)}, np.max(jacobi) = {np.max(jacobi)}")
+    print(f"finish jacobi preconditioner")
+ 
+
+def linear_full_solve(problem, A_fn, precond):
+    b = np.zeros((problem.num_total_nodes, problem.vec))
+    b = assign_bc(b, problem).reshape(-1)
+    jacobi = jacobi_preconditioner(problem)
+    pc = get_jacobi_precond(jacobi) if precond else None
+    dofs, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=b, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)
+    return dofs
+
+
+def linear_incremental_solver(problem, res_fn, A_fn, dofs, precond):
     """
-    # node_inds_list, vec_inds_list, vals_list = problem.node_inds_list, problem.vec_inds_list, problem.vals_list
-    res_fn = problem.compute_residual
-    sol = np.zeros((problem.num_total_nodes, problem.vec))
-    dofs = sol.reshape(-1)
-    dofs = assign_bc(sol, problem).reshape(-1)
-    A_fn = apply_bc(res_fn, problem)
-    b = -A_fn(dofs)
-    A_fn_linear = get_A_fn_linear_fn(dofs, A_fn)
-    inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
+    Lift solver
+    dofs must already satisfy Dirichlet boundary conditions
+    """
+    b = -res_fn(dofs)
+    jacobi = jacobi_preconditioner(problem)
+    pc = get_jacobi_precond(jacobi) if precond else None
+    # test_jacobi_precond(problem, dofs, jacobi_preconditioner(problem), A_fn)
+    inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=None, M=pc, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
     dofs = dofs + inc
-    sol = dofs.reshape(sol.shape)
-    return sol
+    return dofs
 
 
-def solver(problem, initial_guess=None, use_linearization_guess=True):
+def compute_residual_val(res_fn, dofs):
+   res_vec = res_fn(dofs)
+   res_val = np.linalg.norm(res_vec)
+   return res_val
+
+
+def solver(problem, initial_guess=None, linear=False, precond=True):
     print("Start timing")
     start = time.time()
-
-    res_fn = problem.compute_residual
 
     if initial_guess is not None:
         sol = initial_guess
     else:
         sol = np.zeros((problem.num_total_nodes, problem.vec))
 
-    linear_solve_step = 0
-    # This seems to be a quite good initial guess
-    if use_linearization_guess:
-        print("Solving a linearized problem to get a good initial guess...")
-        dofs = sol.reshape(-1)
-        res_fn_dofs = get_flatten_fn(res_fn, problem)
-        res_fn_linear = get_A_fn_linear_fn(dofs, res_fn_dofs)
-        res_fn_final = row_elimination(res_fn_linear, problem)
-        b = -res_fn(sol)
-        b = assign_bc(b, problem)
-        # print(f"step = 0, res l_2 = {np.linalg.norm(res_fn_final(assign_bc(sol).reshape(-1)))}") 
-        dofs = assign_bc(sol, problem).reshape(-1)
-        dofs, info = jax.scipy.sparse.linalg.bicgstab(res_fn_final, b.reshape(-1), x0=dofs, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
-        linear_solve_step += 1
+    dofs = sol.reshape(-1)
+
+    res_fn = problem.compute_residual
+    res_fn = get_flatten_fn(res_fn, problem)
+    res_fn = apply_bc(res_fn, problem) 
+
+    if linear:
+        # If the problem is known to be linear, there's no need to perform linearization.
+        # Specifically, we save the cost of computing the fourh-order tangent tensor C.
+        A_fn = get_A_fn_linear_fn(dofs, res_fn)
+        dofs = assign_bc(dofs, problem).reshape(-1)
+        dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, False)
     else:
-        dofs = assign_bc(sol, problem).reshape(-1)
+        A_fn = problem.compute_linearized_residual
+        A_fn = get_flatten_fn(A_fn, problem)
+        A_fn = row_elimination(A_fn, problem)
 
-    # Newton's method begins here.
-    # If the problem is linear, the Newton's iteration will not be triggered.
-    A_fn = apply_bc(res_fn, problem)
-    b = -A_fn(dofs)
-    res_val = np.linalg.norm(b)
-    print(f"Before calling Newton's method, res l_2 = {res_val}") 
-    tol = 1e-6
-    while res_val > tol:
-        A_fn_linear = get_A_fn_linear_fn(dofs, A_fn)
-        debug = False
-        if debug:
-            # Check onditional number of the matrix
-            A_dense = operator_to_matrix(A_fn_linear, problem)
-            print(f"conditional number = {np.linalg.cond(A_dense)}")
-            print(f"max A = {np.max(A_dense)}")
-            print(A_dense)
-
-        inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
-        linear_solve_step += 1
-        dofs = dofs + inc
-        b = -A_fn(dofs)
-        res_val = np.linalg.norm(b)
-        print(f"step = {linear_solve_step}, res l_2 = {res_val}") 
+        problem.newton_update(dofs.reshape(sol.shape))
+        dofs = linear_full_solve(problem, A_fn, precond)
+        res_val = compute_residual_val(res_fn, dofs)
+        print(f"Before, res l_2 = {res_val}") 
+        tol = 1e-6
+        while res_val > tol:
+            problem.newton_update(dofs.reshape(sol.shape))
+            dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
+            res_val = compute_residual_val(res_fn, dofs)
+            print(f"res l_2 = {res_val}") 
 
     sol = dofs.reshape(sol.shape)
     end = time.time()
     solve_time = end - start
-    print(f"Solve took {solve_time} [s], finished in {linear_solve_step} linear solve steps")
+    print(f"Solve took {solve_time} [s]")
     print(f"max of sol = {np.max(sol)}")
     print(f"min of sol = {np.min(sol)}")
 
