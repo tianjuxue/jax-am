@@ -44,7 +44,6 @@ def assign_zero_bc(dofs, problem):
     return sol.reshape(-1)
 
  
- 
 def assign_ones_bc(dofs, problem):
     sol = dofs.reshape((problem.num_total_nodes, problem.vec))
     for i in range(len(problem.node_inds_list)):
@@ -123,7 +122,7 @@ def test_jacobi_precond(problem, dofs, jacobi, A_fn):
         test_vec = test_vec.at[ind].set(1.)
         print(f"{A_fn(test_vec)[ind]}, {jacobi[ind]}, ratio = {A_fn(test_vec)[ind]/jacobi[ind]}")
 
-    print(f"compute jacobi preconditioner")
+    print(f"test jacobi preconditioner")
     print(f"np.min(jacobi) = {np.min(jacobi)}, np.max(jacobi) = {np.max(jacobi)}")
     print(f"finish jacobi preconditioner")
  
@@ -131,8 +130,7 @@ def test_jacobi_precond(problem, dofs, jacobi, A_fn):
 def linear_full_solve(problem, A_fn, precond):
     b = np.zeros((problem.num_total_nodes, problem.vec))
     b = assign_bc(b, problem).reshape(-1)
-    jacobi = jacobi_preconditioner(problem)
-    pc = get_jacobi_precond(jacobi) if precond else None
+    pc = get_jacobi_precond(jacobi_preconditioner(problem)) if precond else None
     dofs, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=b, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)
     return dofs
 
@@ -143,8 +141,7 @@ def linear_incremental_solver(problem, res_fn, A_fn, dofs, precond):
     dofs must already satisfy Dirichlet boundary conditions
     """
     b = -res_fn(dofs)
-    jacobi = jacobi_preconditioner(problem)
-    pc = get_jacobi_precond(jacobi) if precond else None
+    pc = get_jacobi_precond(jacobi_preconditioner(problem)) if precond else None
     # test_jacobi_precond(problem, dofs, jacobi_preconditioner(problem), A_fn)
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=None, M=pc, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
     dofs = dofs + inc
@@ -172,18 +169,17 @@ def solver(problem, initial_guess=None, linear=False, precond=True):
     res_fn = get_flatten_fn(res_fn, problem)
     res_fn = apply_bc(res_fn, problem) 
 
+    problem.newton_update(dofs.reshape(sol.shape))
+
     if linear:
-        # If the problem is known to be linear, there's no need to perform linearization.
-        # Specifically, we save the cost of computing the fourh-order tangent tensor C.
+        # If we know the problem is linear, this way of solving seems faster.
         A_fn = get_A_fn_linear_fn(dofs, res_fn)
         dofs = assign_bc(dofs, problem).reshape(-1)
-        dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, False)
+        dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
     else:
         A_fn = problem.compute_linearized_residual
         A_fn = get_flatten_fn(A_fn, problem)
         A_fn = row_elimination(A_fn, problem)
-
-        problem.newton_update(dofs.reshape(sol.shape))
         dofs = linear_full_solve(problem, A_fn, precond)
         res_val = compute_residual_val(res_fn, dofs)
         print(f"Before, res l_2 = {res_val}") 

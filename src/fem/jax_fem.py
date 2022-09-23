@@ -447,10 +447,10 @@ class Laplace(FEM):
         self.v_grads_JxW = self.shape_grads[:, :, :, None, :] * self.JxW[:, :, None, None, None]
 
     def get_tensor_map(self):
-        raise NotImplementedError(f"Child class must override this function!")
+        raise NotImplementedError(f"Child class must override this function.")
 
     def compute_linearized_residual(self, sol):
-        """Compute residual vector from the weak form.
+        """Compute linearized residual vector from the weak form.
         This is the most central function in our FEM implemnetation.
         The function takes a lot of memory - Thinking about ways for memory saving...
         E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
@@ -640,6 +640,31 @@ class LinearElasticity(Laplace):
         unity_integral_val = self.surface_integral(location_fn, unity_fn, sol)
         return unity_integral_val
 
+    def compute_traction(self, location_fn, sol):
+        """For post-processing only
+        TODO: duplicated code
+        """
+        stress = self.get_tensor_map()
+        vmap_stress = jax.vmap(stress)
+        def traction_fn(u_grads):
+            """
+            Returns
+            ------- 
+            traction: ndarray
+                (num_selected_faces, num_face_quads, vec)
+            """
+            # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
+            sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
+            # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
+            # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
+            normals = np.array([0., 0., 1.]).reshape((self.dim, 1))
+            traction = (sigmas @ normals[None, None, :, :])[:, :, :, 0]
+            return traction
+
+        traction_integral_val = self.surface_integral(location_fn, traction_fn, sol)
+        return traction_integral_val
+
 
 class HyperElasticity(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
@@ -649,7 +674,7 @@ class HyperElasticity(Laplace):
 
     def get_tensor_map(self):
         def psi(F):
-            E = 70e3
+            E = 1e3
             nu = 0.3
             mu = E/(2.*(1. + nu))
             kappa = E/(3.*(1. - 2.*nu))
@@ -779,8 +804,5 @@ class Mesh():
     """
     def __init__(self, points, cells):
         # TODO: Assert that cells must have correct orders 
-        # TODO: Any performance difference?
         self.points = np.array(points)
         self.cells = np.array(cells)
-        # self.points = points
-        # self.cells = cells

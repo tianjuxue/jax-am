@@ -9,7 +9,7 @@ from scipy.stats import qmc
 from src.fem.apps.multi_scale.arguments import args
 from src.fem.generate_mesh import box_mesh
 from src.fem.jax_fem import Mesh, Laplace
-from src.fem.solver import solver, assign_bc, get_A_fn_linear_fn, apply_bc
+from src.fem.solver import solver, assign_bc, get_A_fn_linear_fn
 from src.fem.utils import save_sol
 from src.fem.apps.multi_scale.utils import flat_to_tensor
 from src.fem.apps.multi_scale.fem_model import HyperElasticity
@@ -275,7 +275,7 @@ def generate_samples():
 
 def collect_data():
     problem = rve_problem()
-    date = f"09102022"
+    date = f"09192022"
     root_numpy = os.path.join(f"src/fem/apps/multi_scale/data/numpy/training", date)
     if not os.path.exists(root_numpy):
         os.makedirs(root_numpy)

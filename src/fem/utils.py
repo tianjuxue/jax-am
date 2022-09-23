@@ -4,7 +4,6 @@ import numpy as onp
 
 
 def save_sol(problem, sol, sol_file, cell_infos=None):
-    # Create a directory if not exists
     sol_dir = os.path.dirname(sol_file)
     os.makedirs(sol_dir, exist_ok=True)
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})

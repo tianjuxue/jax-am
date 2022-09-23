@@ -1,3 +1,6 @@
+"""
+This is FEniCSx code to generate gold standard results used as ground truth to compare with JAX-FEM results.
+"""
 import numpy as np
 import dolfinx
 from dolfinx import fem, io, mesh, plot, log
@@ -61,6 +64,8 @@ def linear_poisson(N):
 
 
 def nonlinear_poisson(N):
+    """Deprecated.
+    """
     L = 1.
     msh = mesh.create_box(comm=MPI.COMM_WORLD, 
                           points=((0., 0., 0.), (L, L, L)), 
@@ -180,7 +185,7 @@ def linear_elasticity_cylinder():
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
@@ -259,12 +264,12 @@ def hyperelasticity():
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
  
-    E = 70e3
+    E = 1e3
     nu = 0.3
     mu = E/(2.*(1. + nu))
     kappa = E/(3.*(1. - 2.*nu))
@@ -355,7 +360,7 @@ def plasticity(disps, path, case):
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
@@ -516,138 +521,13 @@ def plasticity(disps, path, case):
     return solve_time
 
 
-def performance_test():
-    problems = [linear_elasticity, linear_poisson, nonlinear_poisson]
-    # problems = [linear_elasticity]
-
-    Ns = [25, 50, 100]
-    # Ns = [50]
-
-    solve_time = []
-    for problem in problems:
-        prob_time = []
-        for N in Ns:
-            st = problem(N)
-            prob_time.append(st)
-        solve_time.append(prob_time)
-    
-    solve_time = np.array(solve_time)
-    np.savetxt(f"post-processing/txt/fenicsx_fem_time.txt", solve_time, fmt='%.3f')
-    print(solve_time)
-
-
 def generate_ground_truth_results_for_tests():
     linear_poisson(10)
-    nonlinear_poisson(10) 
     linear_elasticity_cube(10)
     linear_elasticity_cylinder()
     hyperelasticity()
     plasticity(np.array([0., 0.05, 0.1, 0.05, 0.]), f"src/fem/tests/plasticity/fenicsx/", 'test')
 
 
-def generate_fem_examples():
-    lasticity_disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
-    plasticity_path =  f"src/fem/applications/fem_examples/data/"
-    plasticity(lasticity_disps, plasticity_path, 'example')
-
-
-
-
-def debug():
-    L = 1.
-    msh = mesh.create_box(MPI.COMM_WORLD, [np.array([0,0,0]), np.array([10*L, 2*L, 10*L])],
-                      [100,20,100], cell_type=mesh.CellType.hexahedron)
-
-    E = 70e3
-    nu = 0.3
-    mu = E/(2.*(1. + nu))
-    kappa = E/(3.*(1. - 2.*nu))
-
- 
-    V = fem.VectorFunctionSpace(msh, ("CG", 1))
-
-    def boundary_top(x):
-        return np.isclose(x[2], 10*L)
-
-    def boundary_bottom(x):
-        return np.isclose(x[2], 0.)
-
-    fdim = msh.topology.dim - 1
-    boundary_facets_top = mesh.locate_entities_boundary(msh, fdim, boundary_top)
-    boundary_facets_bottom = mesh.locate_entities_boundary(msh, fdim, boundary_bottom)
-
-    marked_facets = boundary_facets_top
-    marked_values = np.full(len(boundary_facets_top), 2, dtype=np.int32) 
-    sorted_facets = np.argsort(marked_facets)
-    facet_tag = dolfinx.mesh.meshtags(msh, fdim, boundary_facets_top[sorted_facets], marked_values[sorted_facets])
-
-    metadata = {"quadrature_degree": 2, "quadrature_scheme": "default"} 
-    ds = ufl.Measure('ds', domain=msh, subdomain_data=facet_tag, metadata=metadata)
-    dxm = ufl.Measure('dx', domain=msh, metadata=metadata)
-    normal = ufl.FacetNormal(msh)
-
-    u_top = np.array([0, 0, 0.1*10*L], dtype=ScalarType)
-    bc_top = fem.dirichletbc(u_top, fem.locate_dofs_topological(V, fdim, boundary_facets_top), V)
-
-    u_bottom = np.array([0, 0, 0], dtype=ScalarType)
-    bc_bottom = fem.dirichletbc(u_bottom, fem.locate_dofs_topological(V, fdim, boundary_facets_bottom), V)
- 
-    uh = fem.Function(V)
-    v = ufl.TestFunction(V)
-
-    d = len(uh)
-    I = ufl.variable(ufl.Identity(d))
-    F = ufl.variable(I + ufl.grad(uh))
-    C = ufl.variable(F.T * F)
-    J = ufl.det(F)
-    Jinv = J**(-2 / 3)
-    I1 = ufl.tr(C)
-    energy = energy = ((mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.) 
-    P = ufl.diff(energy, F)
-
-    F_res = ufl.inner(ufl.grad(v), P)*dxm
-
-    problem = dolfinx.fem.petsc.NonlinearProblem(F_res, uh, [bc_bottom, bc_top])
-    solver = dolfinx.nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
-
-    ksp = solver.krylov_solver
-    opts = petsc4py.PETSc.Options()
-    option_prefix = ksp.getOptionsPrefix()
-
-    opts[f"{option_prefix}ksp_type"] = "bicg"
-
-    # opts[f"{option_prefix}pc_type"] = "jacobi"
-
-    opts[f"{option_prefix}pc_type"] = "none"
-
-    opts[f"{option_prefix}ksp_rtol"] = 1e-10
-    opts[f"{option_prefix}ksp_atol"] = 1e-10
-    opts[f"{option_prefix}ksp_max_it"] = 10000
-
-    # print(opts[f"{option_prefix}ksp_type"])
-    # print(opts[f"{option_prefix}pc_factor_mat_solver_type"])
-    # exit()
-
-    ksp.setFromOptions()
-    log.set_log_level(log.LogLevel.INFO)
-
-    start_time = time.time()
-    n, converged = solver.solve(uh)
-
-    end_time = time.time()
-
-    solve_time = end_time - start_time
-    print(f"Time elapsed {solve_time}")
-
-    print(f"max of sol = {np.max(uh.x.array)}")
-    print(f"min of sol = {np.min(uh.x.array)}") 
- 
-    return solve_time
-
-
 if __name__ == "__main__":
-    # performance_test()
-    # generate_ground_truth_results_for_tests()
-    # generate_fem_examples()
-    debug()
-
+    generate_ground_truth_results_for_tests()

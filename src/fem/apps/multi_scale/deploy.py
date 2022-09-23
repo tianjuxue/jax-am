@@ -101,9 +101,9 @@ def debug():
 
 def homogenization_problem():
     problem_name = "homogenization_debug"
-    args.units_x = 10
+    args.units_x = 2
     args.units_y = 2
-    args.units_z = 10
+    args.units_z = 2
     L = args.L
     meshio_mesh = box_mesh(args.num_hex*args.units_x, args.num_hex*args.units_y, args.num_hex*args.units_z,
                            L*args.units_x, L*args.units_y, L*args.units_z)
@@ -119,26 +119,34 @@ def homogenization_problem():
     def top(point):
         return np.isclose(point[2], args.units_z*L, atol=1e-5)
 
-    dirichlet_corner = lambda _: 0. 
-    dirichlet_bottom_z = lambda _: 0. 
-    dirichlet_top_z = lambda _: 0.025*args.units_z*L
+    dirichlet_zero = lambda _: 0. 
+    # dirichlet_top_z = lambda _: 0.025*args.units_z*L
+    dirichlet_top_z = lambda _: 0.1*args.units_z*L
+  
  
-    location_fns = [corner]*3 + [bottom] + [top]
-    value_fns = [dirichlet_corner]*3 + [dirichlet_bottom_z] + [dirichlet_top_z]
-    vecs = [0, 1, 2, 2, 2]
-    dirichlet_bc_info = [location_fns, vecs, value_fns]
+    # dirichlet_bc_info = [[corner]*3 + [bottom] + [top], 
+    #                      [0, 1, 2, 2, 2]
+    #                      [dirichlet_zero]*3 + [dirichlet_zero] + [dirichlet_top_z], ]
 
-    # problem = HyperElasticity(f"{problem_name}", jax_mesh, mode='nn', dirichlet_bc_info=dirichlet_bc_info)
-    problem = HyperElasticity(f"{problem_name}", jax_mesh,  mode='dns', dirichlet_bc_info=dirichlet_bc_info)
+
+    dirichlet_bc_info = [[bottom, bottom, bottom, top, top, top], 
+                         [0, 1, 2, 0, 1, 2], 
+                         [dirichlet_zero, dirichlet_zero, dirichlet_zero, 
+                          dirichlet_zero, dirichlet_zero, dirichlet_top_z]]
+
+
+    problem = HyperElasticity(f"{problem_name}", jax_mesh, mode='nn', dirichlet_bc_info=dirichlet_bc_info)
+    # problem = HyperElasticity(f"{problem_name}", jax_mesh,  mode='dns', dirichlet_bc_info=dirichlet_bc_info)
 
     sol = np.zeros((problem.num_total_nodes, problem.vec))
-    sol = assign_bc(sol, problem)
-    energy = problem.compute_energy(sol)
+    dofs = sol.reshape(-1)
+    # dofs = assign_bc(dofs, problem)
+    energy = problem.compute_energy(dofs.reshape(sol.shape))
     print(f"Initial energy = {energy}")
 
     # sol = solver(problem, use_linearization_guess=True)
 
-    sol = solver(problem, use_linearization_guess=False)
+    sol = solver(problem)
 
     energy = problem.compute_energy(sol)
     print(f"Final energy = {energy}")
@@ -152,6 +160,5 @@ def homogenization_problem():
 
 
 if __name__=="__main__":
-    # homogenization_problem()
     # debug()
     homogenization_problem()
