@@ -6,3 +6,4 @@ pip install meshio
 pip install orix
 pip install matplotlib
 pip install scipy
+# conda install cuda -c nvidia

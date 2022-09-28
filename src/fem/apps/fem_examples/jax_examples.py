@@ -53,11 +53,10 @@ def linear_elasticity_dogbone(disp, index):
     end_time = time.time()
     solve_time = end_time - start_time
     print(f"Time elapsed {solve_time}")
-    jax_vtu_path = f"src/fem/apps/fem_examples/data/vtk/{problem.name}/u_{index}.vtu"
-    save_sol(problem, sol, jax_vtu_path)
+    vtu_path = f"src/fem/apps/fem_examples/data/vtk/{problem.name}/u_{index}.vtu"
+    save_sol(problem, sol, vtu_path)
     num_total_dofs = problem.num_total_nodes*problem.vec
     return solve_time, num_total_dofs
-
 
 
 def linear_elasticity_cylinder(disps):
@@ -217,5 +216,5 @@ def exp():
 
 if __name__ == "__main__":
     # generate_fem_examples()
-    performance_test()
-    # exp()
+    # performance_test()
+    exp()

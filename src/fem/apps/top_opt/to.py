@@ -12,7 +12,7 @@ import time
 
 from src.fem.generate_mesh import box_mesh
 from src.fem.jax_fem import Mesh, Laplace
-from src.fem.solver import solver, apply_bc, get_flatten_fn
+from src.fem.solver import solver, adjoint_method
 from src.fem.utils import save_sol
 
 from src.fem.apps.top_opt.AuTo.utilfuncs import computeLocalElements, computeFilter
@@ -36,7 +36,6 @@ globalVolumeConstraint = {'isOn':True, 'vf':0.5}
 
 optimizationParams = {'maxIters':200,'minIters':100,'relTol':0.05}
 projection = {'isOn':False, 'beta':4, 'c0':0.5}
-
 
 
 class LinearElasticity(Laplace):
@@ -84,12 +83,12 @@ class LinearElasticity(Laplace):
         return val
 
 
-def exp():
+def topology_optimization():
     root_path = f'src/fem/apps/top_opt/data'
 
-    # files = glob.glob(os.path.join(root_path, 'vtk/*'))
-    # for f in files:
-    #     os.remove(f)
+    files = glob.glob(os.path.join(root_path, 'vtk/*'))
+    for f in files:
+        os.remove(f)
 
     # meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
     meshio_mesh = box_mesh(nelx, nely, 1, 50., 30., 1.)
@@ -112,84 +111,26 @@ def exp():
 
     problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=neumann_bc_info)
 
-    key = jax.random.PRNGKey(seed=0)
-
+    # key = jax.random.PRNGKey(seed=0)
     # theta_ini = jax.random.uniform(key, (problem.num_cells,))
     # theta_ini = 0.4*np.ones(problem.num_cells)
     # compliance = fn(theta_ini)
 
-    def fn(params):
-        print(f"\nStep {fn.counter}")
-        problem.params = params
-        # sol = solver(problem, linear=True)
-        sol = solver(problem, linear=False)
-        compliance = problem.compute_compliance(neumann_val, sol)
-        dofs = sol.reshape(-1)
-        vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
-        save_sol(problem, sol, vtu_path, [('theta', params)])
-        fn.dofs = dofs
-        fn.sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        fn.counter += 1
-        print(f"compliance = {compliance}")
-        print(f"max theta = {np.max(params)}, min theta = {np.min(params)}, mean theta = {np.mean(params)}")
-        return compliance
-
-    fn.counter = 0
-    fn.sol = np.zeros((problem.num_total_nodes, problem.vec))
-
-    def J_fn(dofs):
+    def J_fn(dofs, params):
+        """J(u, p)
+        """
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
         compliance = problem.compute_compliance(neumann_val, sol)
         return compliance
 
-    def constraint_fn(params, dofs):
-        problem.params = params
-        res_fn = problem.compute_residual
-        res_fn = get_flatten_fn(res_fn, problem)
-        res_fn = apply_bc(res_fn, problem)
-        return res_fn(dofs)
+    def output_sol(params, dofs, obj_val):
+        sol = dofs.reshape((problem.num_total_nodes, problem.vec))
+        vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
+        save_sol(problem, sol, vtu_path, cell_infos=[('theta', params)])
+        print(f"compliance = {obj_val}")
+        print(f"max theta = {np.max(params)}, min theta = {np.min(params)}, mean theta = {np.mean(params)}")
 
-    def get_partial_dofs_c_fn(params):
-        def partial_dofs_c_fn(dofs):
-            return constraint_fn(params, dofs)
-        return partial_dofs_c_fn
-
-    def get_partial_params_c_fn(dofs):
-        def partial_params_c_fn(params):
-            return constraint_fn(params, dofs)
-        return partial_params_c_fn
-
-    def get_vjp_contraint_fn_params(params, dofs):
-        partial_c_fn = get_partial_params_c_fn(dofs)
-        def vjp_linear_fn(v):
-            primals, f_vjp = jax.vjp(partial_c_fn, params)
-            val, = f_vjp(v)
-            return val
-        return jax.jit(vjp_linear_fn)
-
-    def get_adjoint_linear_fn(params, dofs):
-        partial_c_fn = get_partial_dofs_c_fn(params)
-        def adjoint_linear_fn(adjoint):
-            primals, f_vjp = jax.vjp(partial_c_fn, dofs)
-            val, = f_vjp(adjoint)
-            return val
-        return jax.jit(adjoint_linear_fn)
-
-    def fn_grad(params):
-        dofs = fn.dofs
-        partial_dJ_dx = jax.grad(J_fn)(dofs)
-        adjoint_linear_fn = get_adjoint_linear_fn(params, dofs)
-        vjp_linear_fn = get_vjp_contraint_fn_params(params, dofs)
-        # start = time.time()
-        # adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_dx, x0=fn_grad.adjoint, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
-        adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_dx, x0=None, M=None, tol=1e-10, atol=1e-10, maxiter=10000)
-        # fn_grad.adjoint = adjoint
-        # end = time.time()
-        # print(f"Adjoint solve took {end - start} [s]")
-        total_dJ_dp = -vjp_linear_fn(adjoint)
-        return total_dJ_dp
-
-    # fn_grad.adjoint = np.zeros(problem.num_total_nodes*problem.vec)
+    fn, fn_grad = adjoint_method(problem, J_fn, output_sol, linear=True)
 
     def objectiveHandle(rho):
         J = fn(rho)
@@ -209,4 +150,4 @@ def exp():
 
 
 if __name__=="__main__":
-    exp()
+    topology_optimization()

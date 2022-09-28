@@ -87,11 +87,15 @@ def operator_to_matrix(operator_fn, problem):
     return J
 
 
-def jacobi_preconditioner(problem):
+def jacobi_preconditioner(problem, dofs):
+    if problem.C is None:
+        C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
+    else:
+        C = problem.C
     C_sub = []
     for i in range(problem.vec):
         # (num_cells*num_quads, dim, dim)
-        C_sub.append(problem.C[:, i*problem.dim:(i+1)*problem.dim, i*problem.dim:(i+1)*problem.dim])
+        C_sub.append(C[:, i*problem.dim:(i+1)*problem.dim, i*problem.dim:(i+1)*problem.dim])
     # (num_cells, num_quads, num_nodes, dim) -> (num_cells*num_quads, num_nodes, 1, dim)
     shape_grads_reshape = problem.shape_grads.reshape(-1, problem.num_nodes, 1, problem.dim)
     vals = []
@@ -104,7 +108,6 @@ def jacobi_preconditioner(problem):
     vals = np.transpose(np.stack(vals), axes=(1, 2, 0)).reshape(-1, problem.vec)
     jacobi = np.zeros((problem.num_total_nodes, problem.vec))
     jacobi = jacobi.at[problem.cells.reshape(-1)].add(vals)
-
     jacobi = assign_ones_bc(jacobi.reshape(-1), problem) 
     return jacobi
 
@@ -115,10 +118,10 @@ def get_jacobi_precond(jacobi):
     return jacobi_precond
 
 
-def test_jacobi_precond(problem, dofs, jacobi, A_fn):
-    # TODO
-    for ind in range(len(dofs)):
-        test_vec = np.zeros(problem.num_total_nodes*problem.vec)
+def test_jacobi_precond(problem, jacobi, A_fn):
+    num_total_dofs = problem.num_total_nodes*problem.vec
+    for ind in range(500):
+        test_vec = np.zeros(num_total_dofs)
         test_vec = test_vec.at[ind].set(1.)
         print(f"{A_fn(test_vec)[ind]}, {jacobi[ind]}, ratio = {A_fn(test_vec)[ind]/jacobi[ind]}")
 
@@ -127,10 +130,10 @@ def test_jacobi_precond(problem, dofs, jacobi, A_fn):
     print(f"finish jacobi preconditioner")
  
 
-def linear_full_solve(problem, A_fn, precond):
+def linear_full_solve(problem, A_fn, precond, dofs):
     b = np.zeros((problem.num_total_nodes, problem.vec))
     b = assign_bc(b, problem).reshape(-1)
-    pc = get_jacobi_precond(jacobi_preconditioner(problem)) if precond else None
+    pc = get_jacobi_precond(jacobi_preconditioner(problem, dofs)) if precond else None
     dofs, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=b, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)
     return dofs
 
@@ -141,8 +144,7 @@ def linear_incremental_solver(problem, res_fn, A_fn, dofs, precond):
     dofs must already satisfy Dirichlet boundary conditions
     """
     b = -res_fn(dofs)
-    pc = get_jacobi_precond(jacobi_preconditioner(problem)) if precond else None
-    # test_jacobi_precond(problem, dofs, jacobi_preconditioner(problem), A_fn)
+    pc = get_jacobi_precond(jacobi_preconditioner(problem, dofs)) if precond else None
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=None, M=pc, tol=1e-10, atol=1e-10, maxiter=10000) # bicgstab
     dofs = dofs + inc
     return dofs
@@ -169,23 +171,24 @@ def solver(problem, initial_guess=None, linear=False, precond=True):
     res_fn = get_flatten_fn(res_fn, problem)
     res_fn = apply_bc(res_fn, problem) 
 
-    problem.newton_update(dofs.reshape(sol.shape))
-
+    # TODO: more notes here
     if linear:
         # If we know the problem is linear, this way of solving seems faster.
         A_fn = get_A_fn_linear_fn(dofs, res_fn)
+        # test_jacobi_precond(problem, jacobi_preconditioner(problem), A_fn)
         dofs = assign_bc(dofs, problem).reshape(-1)
         dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
     else:
+        problem.C = problem.newton_update(dofs.reshape(sol.shape))
         A_fn = problem.compute_linearized_residual
         A_fn = get_flatten_fn(A_fn, problem)
         A_fn = row_elimination(A_fn, problem)
-        dofs = linear_full_solve(problem, A_fn, precond)
+        dofs = linear_full_solve(problem, A_fn, precond, dofs)
         res_val = compute_residual_val(res_fn, dofs)
         print(f"Before, res l_2 = {res_val}") 
         tol = 1e-6
         while res_val > tol:
-            problem.newton_update(dofs.reshape(sol.shape))
+            problem.C = problem.newton_update(dofs.reshape(sol.shape))
             dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
             res_val = compute_residual_val(res_fn, dofs)
             print(f"res l_2 = {res_val}") 
@@ -198,3 +201,106 @@ def solver(problem, initial_guess=None, linear=False, precond=True):
     print(f"min of sol = {np.min(sol)}")
 
     return sol
+
+
+def adjoint_method(problem, J_fn, output_sol, linear=False):
+    """The forward problem can be linear or nonlinear.
+    But only linear forward problems have been tested.
+    We need to test nonlinear forward problems.
+    """
+    def fn(params):
+        """J(u(p), p)
+        """
+        print(f"\nStep {fn.counter}")
+        problem.params = params
+        sol = solver(problem, linear=linear)
+        dofs = sol.reshape(-1)
+        obj_val = J_fn(dofs, params)
+        fn.dofs = dofs
+        fn.counter += 1
+        output_sol(params, dofs, obj_val)
+        return obj_val
+
+    fn.counter = 0
+
+    def constraint_fn(dofs, params):
+        """c(u, p)
+        """
+        problem.params = params
+        res_fn = problem.compute_residual
+        res_fn = get_flatten_fn(res_fn, problem)
+        res_fn = apply_bc(res_fn, problem)
+        return res_fn(dofs)
+
+    def get_partial_dofs_c_fn(params):
+        """c(u, p=p)
+        """
+        def partial_dofs_c_fn(dofs):
+            return constraint_fn(dofs, params)
+        return partial_dofs_c_fn
+
+    def get_partial_params_c_fn(dofs):
+        """c(u=u, p)
+        """
+        def partial_params_c_fn(params):
+            return constraint_fn(dofs, params)
+        return partial_params_c_fn
+
+    def get_vjp_contraint_fn_dofs_slow(params, dofs):
+        """v*(partial dc/du)
+        This version is slow.
+        Linearization from "problem.compute_residual" with vjp (or jvp) is slow!
+        """
+        partial_c_fn = get_partial_dofs_c_fn(params)
+        def adjoint_linear_fn(adjoint):
+            primals, f_vjp = jax.vjp(partial_c_fn, dofs)
+            val, = f_vjp(adjoint)
+            return val
+        return adjoint_linear_fn
+
+    def get_vjp_contraint_fn_dofs(params, dofs):
+        """v*(partial dc/du)
+        This version should be fast even for nonlinear problem.
+        If not, consider implementing the adjoint version of "problem.compute_linearized_residual" directly.
+        """
+        # The following two lines may not be needed
+        problem.params = params
+        problem.C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
+        A_fn = problem.compute_linearized_residual
+        A_fn = get_flatten_fn(A_fn, problem)
+        A_fn = row_elimination(A_fn, problem)
+        def adjoint_linear_fn(adjoint):
+            primals, f_vjp = jax.vjp(A_fn, dofs)
+            val, = f_vjp(adjoint)
+            return val
+        return adjoint_linear_fn
+
+    def get_vjp_contraint_fn_params(params, dofs):
+        """v*(partial dc/dp)
+        """
+        partial_c_fn = get_partial_params_c_fn(dofs)
+        def vjp_linear_fn(v):
+            primals, f_vjp = jax.vjp(partial_c_fn, params)
+            val, = f_vjp(v)
+            return val
+        return vjp_linear_fn
+
+    def fn_grad(params):
+        """total dJ/dp
+        """
+        dofs = fn.dofs
+        partial_dJ_du = jax.grad(J_fn, argnums=0)(dofs, params)
+        partial_dJ_dp = jax.grad(J_fn, argnums=1)(dofs, params)
+        adjoint_linear_fn = get_vjp_contraint_fn_dofs(params, dofs)
+        vjp_linear_fn = get_vjp_contraint_fn_params(params, dofs)
+        # test_jacobi_precond(problem, jacobi_preconditioner(problem, dofs), adjoint_linear_fn)
+        problem.C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
+        pc = get_jacobi_precond(jacobi_preconditioner(problem, dofs))
+        start = time.time()
+        adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_du, x0=None, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)
+        end = time.time()
+        print(f"Adjoint solve took {end - start} [s]")
+        total_dJ_dp = -vjp_linear_fn(adjoint) + partial_dJ_dp
+        return total_dJ_dp
+
+    return fn, fn_grad

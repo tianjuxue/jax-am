@@ -19,7 +19,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 
 def aug_solve(problem, initial_guess=None):
     """Periodic solver with Lagrangian multiplier method
-    Kind of slow, maybe due to lack of preconditioner...
+    The current implementation is SLOW.
+    To make it faster, linearization by hand is needed instead of using jvp. Future work.
     """
     print(f"Start timing, H_bar = \n{problem.H_bar}")
     start = time.time()

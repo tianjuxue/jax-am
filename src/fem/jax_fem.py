@@ -445,6 +445,7 @@ class Laplace(FEM):
         self.neumann = self.compute_Neumann_integral(neumann_bc_info)
         # (num_cells, num_quads, num_nodes, 1, dim)
         self.v_grads_JxW = self.shape_grads[:, :, :, None, :] * self.JxW[:, :, None, None, None]
+        self.C = None
 
     def get_tensor_map(self):
         raise NotImplementedError(f"Child class must override this function.")
@@ -501,15 +502,16 @@ class Laplace(FEM):
         return self.compute_residual_vars(sol)
 
     def newton_vars(self, sol, *internal_vars):
-        print(f"Update solution, internal variable, etc. in Newton updates...")
+        print(f"Update solution, internal variable...")
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
         u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads_reshape = np.sum(u_grads, axis=2).reshape(-1, self.vec, self.dim) # (num_cells*num_quads, vec, dim)  
         tensor_map = self.get_tensor_map()
         def C_fn(u_grad, *args):
             return jax.jacfwd(tensor_map)(u_grad, *args)
-        self.C = jax.vmap(C_fn, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(-1, self.vec*self.dim, self.vec*self.dim)
+        C = jax.vmap(C_fn, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(-1, self.vec*self.dim, self.vec*self.dim)
         print(f"Done.")
+        return C
 
     def newton_update(self, sol):
         """Chile class should override if internal variables exist

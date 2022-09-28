@@ -3,7 +3,7 @@ import os
 import numpy as onp
 
 
-def save_sol(problem, sol, sol_file, cell_infos=None):
+def save_sol(problem, sol, sol_file, cell_infos=None, point_infos=None):
     sol_dir = os.path.dirname(sol_file)
     os.makedirs(sol_dir, exist_ok=True)
     out_mesh = meshio.Mesh(points=problem.points, cells={'hexahedron': problem.cells})
@@ -13,6 +13,11 @@ def save_sol(problem, sol, sol_file, cell_infos=None):
             name, data = cell_info
             assert data.shape == (problem.num_cells,), "cell data wrong shape!"
             out_mesh.cell_data[name] = [onp.array(data, dtype=onp.float32)]
+    if point_infos is not None:
+        for point_info in point_infos:
+            name, data = point_info
+            assert len(data) == len(sol), "point data wrong shape!"
+            out_mesh.point_data[name] = onp.array(data, dtype=onp.float32)
     out_mesh.write(sol_file)
 
 
