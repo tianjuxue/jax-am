@@ -1,3 +1,6 @@
+"""
+This is FEniCSx code to generate gold standard results used as ground truth to compare with JAX-FEM results.
+"""
 import numpy as np
 import dolfinx
 from dolfinx import fem, io, mesh, plot, log
@@ -61,6 +64,8 @@ def linear_poisson(N):
 
 
 def nonlinear_poisson(N):
+    """Deprecated.
+    """
     L = 1.
     msh = mesh.create_box(comm=MPI.COMM_WORLD, 
                           points=((0., 0., 0.), (L, L, L)), 
@@ -180,7 +185,7 @@ def linear_elasticity_cylinder():
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
@@ -259,12 +264,12 @@ def hyperelasticity():
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
  
-    E = 70e3
+    E = 1e3
     nu = 0.3
     mu = E/(2.*(1. + nu))
     kappa = E/(3.*(1. - 2.*nu))
@@ -355,7 +360,7 @@ def plasticity(disps, path, case):
     cell_type = 'hexahedron'
     cells = meshio_mesh.get_cells_type(cell_type)
     out_mesh = meshio.Mesh(points=meshio_mesh.points, cells={cell_type: cells})
-    xdmf_file = f"post-processing/msh/cylinder.xdmf"
+    xdmf_file = f"src/fem/data/msh/cylinder.xdmf"
     out_mesh.write(xdmf_file)
     mesh_xdmf_file = io.XDMFFile(MPI.COMM_WORLD, xdmf_file, 'r')
     msh = mesh_xdmf_file.read_mesh(name="Grid")
@@ -516,43 +521,13 @@ def plasticity(disps, path, case):
     return solve_time
 
 
-def performance_test():
-    problems = [linear_elasticity, linear_poisson, nonlinear_poisson]
-    # problems = [linear_elasticity]
-
-    Ns = [25, 50, 100]
-    # Ns = [50]
-
-    solve_time = []
-    for problem in problems:
-        prob_time = []
-        for N in Ns:
-            st = problem(N)
-            prob_time.append(st)
-        solve_time.append(prob_time)
-    
-    solve_time = np.array(solve_time)
-    np.savetxt(f"post-processing/txt/fenicsx_fem_time.txt", solve_time, fmt='%.3f')
-    print(solve_time)
-
-
 def generate_ground_truth_results_for_tests():
-    # linear_poisson(10)
-    # nonlinear_poisson(10) 
-    # linear_elasticity_cube(10)
-    # linear_elasticity_cylinder()
-    # hyperelasticity()
+    linear_poisson(10)
+    linear_elasticity_cube(10)
+    linear_elasticity_cylinder()
+    hyperelasticity()
     plasticity(np.array([0., 0.05, 0.1, 0.05, 0.]), f"src/fem/tests/plasticity/fenicsx/", 'test')
 
 
-def generate_fem_examples():
-    lasticity_disps = np.hstack((np.linspace(0., 0.1, 11), np.linspace(0.09, 0., 10)))
-    plasticity_path =  f"src/fem/applications/fem_examples/data/"
-    plasticity(lasticity_disps, plasticity_path, 'example')
-
-
 if __name__ == "__main__":
-    # performance_test()
-    # generate_ground_truth_results_for_tests()
-    generate_fem_examples()
-
+    generate_ground_truth_results_for_tests()

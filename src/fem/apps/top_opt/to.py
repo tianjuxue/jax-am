@@ -12,11 +12,11 @@ import time
 
 from src.fem.generate_mesh import box_mesh
 from src.fem.jax_fem import Mesh, Laplace
-from src.fem.solver import solver, linear_solver, apply_bc
+from src.fem.solver import solver, apply_bc, get_flatten_fn
 from src.fem.utils import save_sol
 
-from src.fem.applications.top_opt.AuTo.utilfuncs import computeLocalElements, computeFilter
-from src.fem.applications.top_opt.AuTo.mmaOptimize import optimize
+from src.fem.apps.top_opt.AuTo.utilfuncs import computeLocalElements, computeFilter
+from src.fem.apps.top_opt.AuTo.mmaOptimize import optimize
 
 
 nelx, nely = 50, 30
@@ -40,14 +40,15 @@ projection = {'isOn':False, 'beta':4, 'c0':0.5}
 
 
 class LinearElasticity(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info=None, periodic_bc_info=None, neumann_bc_info=None, source_info=None):
+    def __init__(self, name, mesh, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        self.params = None       
-        super().__init__(mesh, dirichlet_bc_info, periodic_bc_info, neumann_bc_info, source_info)
+        self.params = None
+        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
         self.neumann_boundary_inds = self.Neuman_boundary_conditions_inds(neumann_bc_info[0])[0]
 
-    def stress_strain_fns(self):
+
+    def get_tensor_map(self):
         def stress(u_grad, theta):
             # E = 10.
             # E = 1. + 9*theta**3
@@ -60,41 +61,17 @@ class LinearElasticity(Laplace):
             epsilon = 0.5*(u_grad + u_grad.T)
             sigma = lmbda*np.trace(epsilon)*np.eye(self.dim) + 2*mu*epsilon
             return sigma
+        return stress
 
-        vmap_stress = jax.vmap(stress)
-        return vmap_stress
-
-    def compute_physics(self, sol, u_grads):
-        """
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)
-        """
+    def compute_residual(self, sol):
         thetas = np.repeat(self.params[:, None], self.num_quads, axis=1).reshape(-1)
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-        vmap_stress = self.stress_strain_fns()
-        sigmas = vmap_stress(u_grads_reshape, thetas).reshape(u_grads.shape)
-        return sigmas
+        return self.compute_residual_vars(sol, thetas)
+
+    def newton_update(self, sol):
+        thetas = np.repeat(self.params[:, None], self.num_quads, axis=1).reshape(-1)
+        return self.newton_vars(sol, thetas)
 
     def compute_compliance(self, neumann_fn, sol):
-        """Compute surface integral specified by neumann_fn: (traction, u) * ds
-        For post-processing only.
-        Example usage: compute the total force on a certain surface.
-
-        Parameters
-        ----------
-        surface_fn: callable
-            A function that inputs a point (ndarray) and returns the value.
-        sol: ndarray
-            (num_total_nodes, vec)
-
-        Returns
-        -------
-        val: ndarray
-            ()
-        """
         boundary_inds = self.neumann_boundary_inds
         _, nanson_scale = self.get_face_shape_grads(boundary_inds)
         # (num_selected_faces, 1, num_nodes, vec) * # (num_selected_faces, num_face_quads, num_nodes, 1)    
@@ -107,12 +84,12 @@ class LinearElasticity(Laplace):
         return val
 
 
-def debug():
-    root_path = f'src/fem/applications/top_opt/data'
+def exp():
+    root_path = f'src/fem/apps/top_opt/data'
 
-    files = glob.glob(os.path.join(root_path, 'vtk/*'))
-    for f in files:
-        os.remove(f)
+    # files = glob.glob(os.path.join(root_path, 'vtk/*'))
+    # for f in files:
+    #     os.remove(f)
 
     # meshio_mesh = box_mesh(50, 30, 1, 4., 1., 0.1)
     meshio_mesh = box_mesh(nelx, nely, 1, 50., 30., 1.)
@@ -133,7 +110,7 @@ def debug():
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[load], [neumann_val]]
 
-    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=dirichlet_bc_info)
+    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=neumann_bc_info)
 
     key = jax.random.PRNGKey(seed=0)
 
@@ -144,8 +121,8 @@ def debug():
     def fn(params):
         print(f"\nStep {fn.counter}")
         problem.params = params
-        # sol = solver(problem, initial_guess=fn.sol, use_linearization_guess=False)
-        sol = linear_solver(problem)
+        # sol = solver(problem, linear=True)
+        sol = solver(problem, linear=False)
         compliance = problem.compute_compliance(neumann_val, sol)
         dofs = sol.reshape(-1)
         vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
@@ -168,9 +145,9 @@ def debug():
     def constraint_fn(params, dofs):
         problem.params = params
         res_fn = problem.compute_residual
-        
-        A_fn = apply_bc(res_fn, problem)
-        return A_fn(dofs)
+        res_fn = get_flatten_fn(res_fn, problem)
+        res_fn = apply_bc(res_fn, problem)
+        return res_fn(dofs)
 
     def get_partial_dofs_c_fn(params):
         def partial_dofs_c_fn(dofs):
@@ -198,7 +175,6 @@ def debug():
             return val
         return jax.jit(adjoint_linear_fn)
 
-    @jax.jit
     def fn_grad(params):
         dofs = fn.dofs
         partial_dJ_dx = jax.grad(J_fn)(dofs)
@@ -233,4 +209,4 @@ def debug():
 
 
 if __name__=="__main__":
-    debug()
+    exp()

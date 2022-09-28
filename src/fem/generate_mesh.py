@@ -10,7 +10,7 @@ def box_mesh(Nx, Ny, Nz, Lx=1., Ly=1., Lz=1.):
     https://gitlab.onelab.info/gmsh/gmsh/-/blob/gmsh_4_7_1/tutorial/python/t1.py
     https://gitlab.onelab.info/gmsh/gmsh/-/blob/gmsh_4_7_1/tutorial/python/t3.py
     """
-    mesh_file = "post-processing/msh/box.msh"
+    mesh_file = f"src/fem/data/msh/box.msh"
     generate = True
     if generate:
         offset_x = 0.
@@ -49,7 +49,7 @@ def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
     hight_mesh:num of meshs in hight
     rect_ratio: rect length/R
     """
-    mesh_name = "post-processing/msh/cylinder"
+    mesh_name = f"src/fem/data/msh/cylinder"
     rect_coor = R*rect_ratio
     geo_file = mesh_name + ".geo"
     mesh_file = mesh_name + ".msh"
@@ -112,10 +112,17 @@ def cylinder_mesh(R=5, H=10, circle_mesh=5, hight_mesh=20, rect_ratio=0.4):
     mesh = meshio.read(mesh_file)
     points = mesh.points # (num_total_nodes, dim)
     cells =  mesh.cells_dict['hexahedron'] # (num_cells, num_nodes)
+
+    # The mesh somehow has two redundant points...
+    points = onp.vstack((points[1:14], points[15:]))
+    cells = onp.where(cells > 14, cells - 2, cells - 1)
+
     # print(points[:10])
     # print(f"Number of total vertices = {len(points)}")
     # print(f"Number of total cells = {len(cells)}")
     # print(onp.take(points, cells[:3], axis=0))
+
+    mesh = meshio.Mesh(points, [("hexahedron", cells)])
 
     return mesh
 

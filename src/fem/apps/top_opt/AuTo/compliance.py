@@ -4,12 +4,12 @@ import jax.numpy as jnp
 from jax import jit, value_and_grad
 import time
 import matplotlib.pyplot as plt
-from src.fem.applications.top_opt.AuTo.utilfuncs import Mesher, computeFilter
-from src.fem.applications.top_opt.AuTo.mmaOptimize import optimize
+from src.fem.apps.top_opt.AuTo.utilfuncs import Mesher, computeFilter
+from src.fem.apps.top_opt.AuTo.mmaOptimize import optimize
 
 
-nelx, nely = 60, 30
-# nelx, nely = 100, 30
+# nelx, nely = 60, 30
+nelx, nely = 100, 50
 
 elemSize = np.array([1., 1.])
 mesh = {'nelx':nelx, 'nely':nely, 'elemSize':elemSize,\

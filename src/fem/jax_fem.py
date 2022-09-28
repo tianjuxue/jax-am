@@ -58,6 +58,7 @@ class FEM:
         self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
         print(f"Done pre-computations")
+        print(f"Solving a problem with {len(self.cells)} cells, {self.num_total_nodes}x{self.vec} = {self.num_total_nodes*self.vec} dofs.")
 
     def get_shape_val_functions(self):
         """Hard-coded first order shape functions in the reference domain.
@@ -431,7 +432,7 @@ class Laplace(FEM):
     """Solving problems whose weak form is (f(u_grad), v_grad) * dx - (traction, v) * ds - (body_force, v) * dx = 0,
     where u and v are trial and test functions, respectively, and f is a general function.
     This covers
-        - Poisson's problem (linear or nonlinear)
+        - Poisson's problem
         - Linear elasticity
         - Hyper-elasticity
         - Plasticity
@@ -445,8 +446,12 @@ class Laplace(FEM):
         # (num_cells, num_quads, num_nodes, 1, dim)
         self.v_grads_JxW = self.shape_grads[:, :, :, None, :] * self.JxW[:, :, None, None, None]
 
-    def compute_residual(self, sol):
-        """Compute residual vector from the weak form.
+    def get_tensor_map(self):
+        raise NotImplementedError(f"Child class must override this function.")
+
+    def compute_linearized_residual(self, sol):
+        """Compute linearized residual vector from the weak form.
+        This is the most central function in our FEM implemnetation.
         The function takes a lot of memory - Thinking about ways for memory saving...
         E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
 
@@ -462,32 +467,54 @@ class Laplace(FEM):
         res: ndarray
             (num_total_nodes, vec) 
         """
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
-        u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
+        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
+        u_grads = sol[self.cells][:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
-        u_physics = self.compute_physics(sol, u_grads) # (num_cells, num_quads, vec, dim)  
+        u_grads_reshape = u_grads.reshape(-1, self.vec * self.dim) # (num_cells*num_quads, vec*dim)
+        # (num_cells*num_quads, vec*dim, vec*dim) * (num_cells*num_quads, 1, vec*dim) -> (num_cells*num_quads, vec*dim, 1)
+        u_physics = np.sum(self.C * u_grads_reshape[:, None, :], axis=(2)).reshape(u_grads.shape) # (num_cells, num_quads, vec, dim)
+        # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
+        weak_form = np.sum(u_physics[:, :, None, :, :] * self.v_grads_JxW, axis=(1, -1)).reshape(-1, self.vec) 
+        res = np.zeros_like(sol)
+        res = res.at[self.cells.reshape(-1)].add(weak_form)
+        return res
+
+    def compute_residual_vars(self, sol, *internal_vars):
+        """TODO: add comments
+        """
+        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
+        u_grads = sol[self.cells][:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
+        u_grads = np.sum(u_grads, axis=2)
+        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim) # (num_cells*num_quads, vec, dim) 
+        tensor_map = self.get_tensor_map()
+        # (num_cells, num_quads, vec, dim) 
+        u_physics = jax.vmap(tensor_map, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(u_grads.shape) 
         # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
         weak_form = np.sum(u_physics[:, :, None, :, :] * self.v_grads_JxW, axis=(1, -1)).reshape(-1, self.vec) 
         res = np.zeros_like(sol)
         res = res.at[self.cells.reshape(-1)].add(weak_form) - self.body_force - self.neumann
         return res 
 
-    def compute_physics(self, sol, u_grads):
-        """In the weak form, we have (f(u_grad), v_grad) * dx, and this function defines the "f" here.
-        Default to be identity function. 
-        Child class should override this function.
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)   
-
-        Returns
-        -------
-        f(u_grads): ndarray
-            (num_cells, num_quads, vec, dim)
+    def compute_residual(self, sol):
+        """Chile class should override if internal variables exist
         """
-        return u_grads
+        return self.compute_residual_vars(sol)
+
+    def newton_vars(self, sol, *internal_vars):
+        print(f"Update solution, internal variable, etc. in Newton updates...")
+        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
+        u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
+        u_grads_reshape = np.sum(u_grads, axis=2).reshape(-1, self.vec, self.dim) # (num_cells*num_quads, vec, dim)  
+        tensor_map = self.get_tensor_map()
+        def C_fn(u_grad, *args):
+            return jax.jacfwd(tensor_map)(u_grad, *args)
+        self.C = jax.vmap(C_fn, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(-1, self.vec*self.dim, self.vec*self.dim)
+        print(f"Done.")
+
+    def newton_update(self, sol):
+        """Chile class should override if internal variables exist
+        """
+        return self.newton_vars(sol)
 
     def compute_body_force(self, source_info):
         """In the weak form, we have (body_force, v) * dx, and this function computes this.
@@ -583,27 +610,9 @@ class LinearPoisson(Laplace):
         self.vec = 1
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
 
-
-class NonlinearPoisson(Laplace):
-    def __init__(self, name, mesh, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
-        self.name = name
-        self.vec = 1
-        super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
-
-    def compute_physics(self, sol, u_grads):
-        """
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)
-        """
-        # (num_cells, 1, num_nodes, vec) * (1, num_quads, num_nodes, 1) -> (num_cells, num_quads, num_nodes, vec)
-        u_vals = np.take(sol, self.cells, axis=0)[:, None, :, :] * self.shape_vals[None, :, :, None] 
-        u_vals = np.sum(u_vals, axis=2) # (num_cells, num_quads, vec)
-        q = (1 + u_vals**2)[:, :, :, None] # (num_cells, num_quads, vec, 1)
-        return q * u_grads
-
+    def get_tensor_map(self):
+        return lambda x: x
+ 
 
 class LinearElasticity(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
@@ -611,7 +620,7 @@ class LinearElasticity(Laplace):
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info) 
     
-    def stress_strain_fns(self):
+    def get_tensor_map(self):
         def stress(u_grad):
             E = 70e3
             nu = 0.3
@@ -620,23 +629,7 @@ class LinearElasticity(Laplace):
             epsilon = 0.5*(u_grad + u_grad.T)
             sigma = lmbda*np.trace(epsilon)*np.eye(self.dim) + 2*mu*epsilon
             return sigma
-
-        vmap_stress = jax.vmap(stress)
-        return vmap_stress
-
-    def compute_physics(self, sol, u_grads):
-        """
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)
-        """
-        # Remark: This is faster than double vmap by reducing ~30% computing time
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-        vmap_stress = self.stress_strain_fns()
-        sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
-        return sigmas
+        return stress
 
     def compute_surface_area(self, location_fn, sol):
         """For post-processing only
@@ -647,6 +640,31 @@ class LinearElasticity(Laplace):
         unity_integral_val = self.surface_integral(location_fn, unity_fn, sol)
         return unity_integral_val
 
+    def compute_traction(self, location_fn, sol):
+        """For post-processing only
+        TODO: duplicated code
+        """
+        stress = self.get_tensor_map()
+        vmap_stress = jax.vmap(stress)
+        def traction_fn(u_grads):
+            """
+            Returns
+            ------- 
+            traction: ndarray
+                (num_selected_faces, num_face_quads, vec)
+            """
+            # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
+            sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
+            # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
+            # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
+            normals = np.array([0., 0., 1.]).reshape((self.dim, 1))
+            traction = (sigmas @ normals[None, None, :, :])[:, :, :, 0]
+            return traction
+
+        traction_integral_val = self.surface_integral(location_fn, traction_fn, sol)
+        return traction_integral_val
+
 
 class HyperElasticity(Laplace):
     def __init__(self, name, mesh, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
@@ -654,9 +672,9 @@ class HyperElasticity(Laplace):
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
 
-    def stress_strain_fns(self):
+    def get_tensor_map(self):
         def psi(F):
-            E = 70e3
+            E = 1e3
             nu = 0.3
             mu = E/(2.*(1. + nu))
             kappa = E/(3.*(1. - 2.*nu))
@@ -672,26 +690,13 @@ class HyperElasticity(Laplace):
             F = u_grad + I
             P = P_fn(F)
             return P
-        vmap_stress = jax.vmap(first_PK_stress)
-        return vmap_stress
-
-    def compute_physics(self, sol, u_grads):
-        """
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)
-        """
-        # Remark: This is faster than double vmap by reducing ~30% computing time
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-        vmap_stress = self.stress_strain_fns()
-        sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
-        return sigmas
+        return first_PK_stress
 
     def compute_traction(self, location_fn, sol):
         """For post-processing only
         """
+        first_PK_stress = self.get_tensor_map()
+        vmap_stress = jax.vmap(first_PK_stress)
         def traction_fn(u_grads):
             """
             Returns
@@ -701,7 +706,6 @@ class HyperElasticity(Laplace):
             """
             # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
             u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-            vmap_stress = self.stress_strain_fns()
             sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
             # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
             # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
@@ -721,7 +725,17 @@ class Plasticity(Laplace):
         self.epsilons_old = np.zeros((len(self.cells)*self.num_quads, self.vec, self.dim))
         self.sigmas_old = np.zeros_like(self.epsilons_old)
 
-    def stress_strain_fns(self):
+    def get_tensor_map(self):
+        _, stress_return_map = self.get_maps()
+        return stress_return_map
+
+    def newton_update(self, sol):
+        return self.newton_vars(sol, self.sigmas_old, self.epsilons_old)
+
+    def compute_residual(self, sol):
+        return self.compute_residual_vars(sol, self.sigmas_old, self.epsilons_old)
+
+    def get_maps(self):
 
         EPS = 1e-10
         # TODO
@@ -758,23 +772,13 @@ class Plasticity(Laplace):
             sigma = sigma_trial - f_yield_plus*s_dev/(s_norm + EPS)
             return sigma
 
+        return strain, stress_return_map
+
+    def stress_strain_fns(self):
+        strain, stress_return_map = self.get_maps()
         vmap_strain = jax.vmap(strain)
         vmap_stress_return_map = jax.vmap(stress_return_map)
         return vmap_strain, vmap_stress_return_map
-
-    def compute_physics(self, sol, u_grads):
-        """
-        Reference: https://comet-fenics.readthedocs.io/en/latest/demo/2D_plasticity/vonMises_plasticity.py.html
-
-        Parameters
-        ----------
-        u_grads: ndarray
-            (num_cells, num_quads, vec, dim)
-        """
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-        _, vmap_stress_rm = self.stress_strain_fns()
-        sigmas = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old).reshape(u_grads.shape)
-        return sigmas
 
     def update_stress_strain(self, sol):
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
@@ -782,13 +786,12 @@ class Plasticity(Laplace):
         u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
         u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)  # (num_cells*num_quads, vec, dim)  
         vmap_strain, vmap_stress_rm = self.stress_strain_fns()
-        sigmas = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old).reshape(u_grads.shape)
-        epsilons = vmap_strain(u_grads_reshape)
-
-        self.sigmas_old = sigmas.reshape(self.sigmas_old.shape)
-        self.epsilons_old = epsilons.reshape(self.epsilons_old.shape)
+        self.sigmas_old = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old)
+        self.epsilons_old = vmap_strain(u_grads_reshape)
 
     def compute_avg_stress(self):
+        """For post-processing only
+        """
         # num_cells*num_quads, vec, dim) * (num_cells*num_quads, 1, 1)
         sigma = np.sum(self.sigmas_old * self.JxW.reshape(-1)[:, None, None], 0)
         vol = np.sum(self.JxW)
@@ -801,8 +804,5 @@ class Mesh():
     """
     def __init__(self, points, cells):
         # TODO: Assert that cells must have correct orders 
-        # TODO: Any performance difference?
         self.points = np.array(points)
         self.cells = np.array(cells)
-        # self.points = points
-        # self.cells = cells

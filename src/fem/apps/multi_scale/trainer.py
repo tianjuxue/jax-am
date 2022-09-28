@@ -12,6 +12,10 @@ from torch.utils.data import Dataset, DataLoader
 from src.fem.apps.multi_scale.arguments import args
 from src.fem.apps.multi_scale.utils import flat_to_tensor, tensor_to_flat
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 
 def H_to_C(H_flat):
     H = flat_to_tensor(H_flat)
@@ -35,6 +39,10 @@ def load_data():
     print(f"data_xy.shape = {data_xy.shape}")
     H = data_xy[:, :-1]
     energy_density = data_xy[:, -1:]/(args.L**3)
+
+    # print(np.sort(energy_density.reshape(-1)))
+    # exit()
+
     return H, energy_density
 
 
@@ -169,17 +177,29 @@ def polynomial_hyperelastic():
     plt.show()
 
 
-def get_pickle_path(hyperparam):
+def get_path_pickle(hyperparam):
     root_pickle = f"src/fem/apps/multi_scale/data/pickle"
-    if not os.path.exists(root_pickle):
-        os.makedirs(root_pickle)
-    pickle_path = os.path.join(root_pickle, f"{hyperparam}_weights.pkl")
-    return pickle_path
+    os.makedirs(root_pickle, exist_ok=True)
+    path_pickle = os.path.join(root_pickle, f"{hyperparam}_weights.pkl")
+    return path_pickle
+
+
+def get_path_loss(hyperparam):
+    root_loss = f"src/fem/apps/multi_scale/data/numpy/training/losses"
+    os.makedirs(root_loss, exist_ok=True)
+    path_loss = os.path.join(root_loss, f"{hyperparam}.npy")
+    return path_loss
+
+
+def get_root_pdf():
+    root_pdf = f"src/fem/apps/multi_scale/data/pdf/training"
+    os.makedirs(root_pdf, exist_ok=True)
+    return root_pdf
 
 
 def get_nn_batch_forward(hyperparam):
-    pickle_path = get_pickle_path(hyperparam)
-    with open(pickle_path, 'rb') as handle:
+    path_pickle = get_path_pickle(hyperparam)
+    with open(path_pickle, 'rb') as handle:
         params = pickle.load(handle)  
     init_random_params, nn_batch_forward = get_mlp()
     batch_forward = lambda x_new: nn_batch_forward(params, x_new).reshape(-1)
@@ -207,7 +227,7 @@ def train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam):
         return get_params(opt_state), opt_state, value
 
     train_val_losses = []
-    num_epochs = 20000
+    num_epochs = 10000
     for epoch in range(num_epochs):
         for batch_idx, (x, y) in enumerate(train_loader):
             params, opt_state, loss = update(params, np.array(x), np.array(y), opt_state)
@@ -215,56 +235,93 @@ def train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam):
             training_smse, _, _ = evaluate_errors(train_data, train_data, batch_forward)
             validatin_smse, _, _ = evaluate_errors(validation_data, train_data, batch_forward)
             train_val_losses.append([training_smse, validatin_smse])
-            print(f"\nEpoch {epoch} training_smse = {training_smse}, validatin_smse = {validatin_smse}")
+            print(f"\nEpoch {epoch} training_smse = {training_smse}, validatin_smse = {validatin_smse}, model = {hyperparam}")
     train_val_losses = onp.array(train_val_losses)
                           
-    pickle_path = get_pickle_path(hyperparam)
-    with open(pickle_path, 'wb') as handle:
-        pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+    path_pickle = get_path_pickle(hyperparam)
+    with open(path_pickle, 'wb') as handle:
+        # pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+        pickle.dump(params, handle)
 
-    onp.save(f"src/fem/apps/multi_scale/data/numpy/training/losses/{hyperparam}.npy", train_val_losses)
+    path_loss = get_path_loss(hyperparam)
+    onp.save(path_loss, train_val_losses)
 
     return  batch_forward
 
 
-def train_val_test():
+def cross_validation():
     hyperparams = ['MLP1', 'MLP2', 'MLP3']
     width_hiddens = [32, 64, 128]
     n_hiddens = [4, 8, 16]
     lrs = [1e-4, 1e-4, 1e-4]
 
+    # hyperparams = ['MLP3']
+    # width_hiddens = [128]
+    # n_hiddens = [16]
+    # lrs = [1./5.*1e-4]
+
     H, energy_density = load_data()
     data = transform_data(H, energy_density)
     train_data, validation_data, test_data, train_loader, validation_loader, test_loader = shuffle_data(data)
 
-    compute = True
-    if compute:
-        for i in range(len(hyperparams)):
-            args.width_hidden = width_hiddens[i]
-            args.n_hidden = n_hiddens[i]
-            args.lr = lrs[i]
+
+    compute = False
+    for i in range(len(hyperparams)):
+        args.width_hidden = width_hiddens[i]
+        args.n_hidden = n_hiddens[i]
+        args.lr = lrs[i]
+        if compute:
             train_mlp_surrogate(train_data, train_loader, validation_data, hyperparams[i])
- 
-    for i in range(len(hyperparam)):
         batch_forward = get_nn_batch_forward(hyperparams[i])
         test_scaled_MSE, test_scaled_true_vals, test_scaled_preds = evaluate_errors(test_data, train_data, batch_forward)
         val_scaled_MSE, val_scaled_true_vals, val_scaled_preds = evaluate_errors(validation_data, train_data, batch_forward)
         print(f"test scaled MSE = {test_scaled_MSE} for model {hyperparams[i]}")
         print(f"validation scaled MSE = {val_scaled_MSE} for model {hyperparams[i]}")
-        train_smse, val_smse = onp.load(f"src/fem/apps/multi_scale/data/numpy/training/losses/{hyperparam}.npy").T
-        epoch = np.arange(len(train_smse))
-        show_train_curve(train_smse, val_smse)
-        show_yy_plot(partial_data, train_data, hyperparam)
+
+        # show_train_curve(hyperparams[i])
+        # show_yy_plot(test_data, train_data, hyperparams[i])
+
+    show_train_curve_for_all(hyperparams)
 
 
-def show_train_curve(train_smse, val_smse):
+# def show_train_curve(hyperparam):
+#     path_loss = get_path_loss(hyperparam)
+#     train_smse, val_smse = onp.load(path_loss).T
+#     epoch = 100*np.arange(len(train_smse))
+#     fig = plt.figure(figsize=(8, 6)) 
+#     plt.plot(epoch, train_smse, '-', linewidth=2, color='blue', label='training')
+#     plt.plot(epoch, val_smse, '-', linewidth=2, color='red', label='validation')
+#     plt.xlabel('Epoch', fontsize=20)
+#     plt.ylabel('SMSE', fontsize=20)
+#     plt.tick_params(labelsize=18)
+#     plt.legend(fontsize=20, frameon=False)
+#     # plt.xscale('log')
+#     plt.yscale('log')
+#     root_pdf = get_root_pdf()
+#     plt.savefig(os.path.join(root_pdf, f"train_curve_{hyperparam}.pdf"), bbox_inches='tight')
+
+
+def show_train_curve_for_all(hyperparams):
+    colors = ['blue', 'red', 'green']
     fig = plt.figure(figsize=(8, 6)) 
-    plt.plot(epoch, train_smse, '-', linewidth=2, color='blue')
-    plt.plot(epoch, val_smse, '-', linewidth=2, color='red')
+    for i in range(len(hyperparams)):
+        path_loss = get_path_loss(hyperparams[i])
+        train_smse, val_smse = onp.load(path_loss).T
+        epoch = 100*np.arange(len(train_smse))
+        plt.plot(epoch[:100], train_smse[:100], '-', linewidth=2, color=colors[i], label=f'training {hyperparams[i]}')
+        plt.plot(epoch[:100], val_smse[:100], '--', linewidth=2, color=colors[i], label=f'validation {hyperparams[i]}')
+        plt.xlabel('Epoch', fontsize=20)
+        plt.ylabel('SMSE', fontsize=20)
+        plt.tick_params(labelsize=18)
+        plt.legend(fontsize=20, frameon=False)
+        plt.yscale('log')
+
+    root_pdf = get_root_pdf()
+    plt.savefig(os.path.join(root_pdf, f"train_curve_all.pdf"), bbox_inches='tight')
 
 
 def show_yy_plot(partial_data, train_data, hyperparam):
-    batch_forward = get_nn_batch_forward()
+    batch_forward = get_nn_batch_forward(hyperparam)
     evaluate_errors(partial_data, train_data, batch_forward)
     y_pred = batch_forward(partial_data[:, :-1]).reshape(-1)
     y_true = partial_data[:, -1]
@@ -276,8 +333,8 @@ def show_yy_plot(partial_data, train_data, hyperparam):
     plt.ylabel(f"Predicted Energy", fontsize=20)
     plt.tick_params(labelsize=18)
     plt.axis('equal')
-    pdf_root = f"src/fem/apps/multi_scale/data/pdf/training"
-    plt.savefig(os.path.join(pdf_root, f"pred_true_{hyperparam}.pdf"), bbox_inches='tight')
+    root_pdf = f"src/fem/apps/multi_scale/data/pdf/training"
+    plt.savefig(os.path.join(root_pdf, f"pred_true_{hyperparam}.pdf"), bbox_inches='tight')
 
 
 def exp():
@@ -285,11 +342,13 @@ def exp():
     H, energy_density = load_data()
     data = transform_data(H, energy_density)
     train_data, validation_data, test_data, train_loader, validation_loader, test_loader = shuffle_data(data) 
-    batch_forward = train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam)
-    show_yy_plot(validation_data, train_data, hyperparam)
- 
+    # batch_forward = train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam)
+    # show_yy_plot(validation_data, train_data, hyperparam)
+    show_train_curve(hyperparam)
+
 
 if __name__ == '__main__':
-    exp()
+    # exp()
+    cross_validation()
     # polynomial_hyperelastic()
-    # plt.show()
+    plt.show()

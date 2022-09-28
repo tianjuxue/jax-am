@@ -9,7 +9,7 @@ from scipy.stats import qmc
 from src.fem.apps.multi_scale.arguments import args
 from src.fem.generate_mesh import box_mesh
 from src.fem.jax_fem import Mesh, Laplace
-from src.fem.solver import solver, assign_bc, get_A_fn_linear_fn, apply_bc
+from src.fem.solver import solver, assign_bc, get_A_fn_linear_fn
 from src.fem.utils import save_sol
 from src.fem.apps.multi_scale.utils import flat_to_tensor
 from src.fem.apps.multi_scale.fem_model import HyperElasticity
@@ -140,8 +140,12 @@ def compute_periodic_inds(location_fns_A, location_fns_B, mappings, vecs, mesh):
 
 
 def rve_problem(problem_name='rve'):
+    args.units_x = 1
+    args.units_y = 1
+    args.units_z = 1
     L = args.L
-    meshio_mesh = box_mesh(10, 10, 10, L, L, L)
+    meshio_mesh = box_mesh(args.num_hex*args.units_x, args.num_hex*args.units_y, args.num_hex*args.units_z,
+                           L*args.units_x, L*args.units_y, L*args.units_z)
     jax_mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def corner(point):
@@ -245,8 +249,9 @@ def solve_rve_problem(problem, sample_H_bar):
     problem.H_bar = base_H_bar
     sol_fluc = aug_solve(problem)
     energy = problem.compute_energy(sol_fluc)
-    ratios = [0.5, 0.75, 0.9, 1.]
+    ratios = [0.25, 0.5, 0.75, 0.9, 1.]
     if np.any(np.isnan(energy)):
+        print(f"Solve with quasi-static steps...")
         sol_fluc = np.zeros((problem.num_total_nodes, problem.vec))
         for ratio in ratios:
             problem.H_bar = ratio * base_H_bar
@@ -270,7 +275,7 @@ def generate_samples():
 
 def collect_data():
     problem = rve_problem()
-    date = f"09102022"
+    date = f"09192022"
     root_numpy = os.path.join(f"src/fem/apps/multi_scale/data/numpy/training", date)
     if not os.path.exists(root_numpy):
         os.makedirs(root_numpy)
@@ -306,5 +311,5 @@ def collect_data():
 
 
 if __name__=="__main__":
-    exp()
-    # collect_data()
+    # exp()
+    collect_data()
