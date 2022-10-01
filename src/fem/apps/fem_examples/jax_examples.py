@@ -18,7 +18,9 @@ def linear_elasticity_dogbone(disp, index):
                     'DogBone_mesh2_disp10.inp',
                     'DogBone_mesh1_disp10.inp',
                     'DogBone_mesh05_disp10.inp',
-                    'DogBone_mesh03_disp10.inp']
+                    'DogBone_mesh03_disp10.inp',
+                    'DogBone_mesh025_disp10.inp',
+                    'DogBone_mesh02_disp10.inp']
 
     mesh_file = os.path.join(abaqus_root, abaqus_files[index])
     meshio_mesh = meshio.read(mesh_file)
@@ -46,9 +48,8 @@ def linear_elasticity_dogbone(disp, index):
                          [zero_dirichlet_val, zero_dirichlet_val, zero_dirichlet_val, 
                           dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
 
-
-    problem = LinearElasticity(f"dogbone", jax_mesh, dirichlet_bc_info=dirichlet_bc_info)
     start_time = time.time()
+    problem = LinearElasticity(f"dogbone", jax_mesh, dirichlet_bc_info=dirichlet_bc_info)
     sol = solver(problem, linear=True, precond=True)
     end_time = time.time()
     solve_time = end_time - start_time
@@ -212,7 +213,7 @@ def generate_fem_examples():
 
 
 def exp():
-    linear_elasticity_dogbone(10., 4)
+    linear_elasticity_dogbone(10., 5)
 
 if __name__ == "__main__":
     # generate_fem_examples()

@@ -63,12 +63,12 @@ class LinearElasticity(Laplace):
         return stress
 
     def compute_residual(self, sol):
-        thetas = np.repeat(self.params[:, None], self.num_quads, axis=1).reshape(-1)
-        return self.compute_residual_vars(sol, thetas)
+        thetas = np.repeat(self.params[:, None], self.num_quads, axis=1)
+        return self.compute_residual_vars(sol, laplace=[thetas])
 
     def newton_update(self, sol):
-        thetas = np.repeat(self.params[:, None], self.num_quads, axis=1).reshape(-1)
-        return self.newton_vars(sol, thetas)
+        thetas = np.repeat(self.params[:, None], self.num_quads, axis=1)
+        return self.newton_vars(sol, laplace=[thetas])
 
     def compute_compliance(self, neumann_fn, sol):
         boundary_inds = self.neumann_boundary_inds
@@ -84,9 +84,10 @@ class LinearElasticity(Laplace):
 
 
 def topology_optimization():
+    problem_name = 'plate'
     root_path = f'src/fem/apps/top_opt/data'
 
-    files = glob.glob(os.path.join(root_path, 'vtk/*'))
+    files = glob.glob(os.path.join(root_path, f'vtk/{problem_name}/*'))
     for f in files:
         os.remove(f)
 
@@ -109,7 +110,7 @@ def topology_optimization():
     dirichlet_bc_info = [[left, left, left], [0, 1, 2], [dirichlet_val, dirichlet_val, dirichlet_val]]
     neumann_bc_info = [[load], [neumann_val]]
 
-    problem = LinearElasticity('linear_elasticity', jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=neumann_bc_info)
+    problem = LinearElasticity(problem_name, jax_mesh, dirichlet_bc_info=dirichlet_bc_info, neumann_bc_info=neumann_bc_info)
 
     # key = jax.random.PRNGKey(seed=0)
     # theta_ini = jax.random.uniform(key, (problem.num_cells,))
@@ -125,7 +126,7 @@ def topology_optimization():
 
     def output_sol(params, dofs, obj_val):
         sol = dofs.reshape((problem.num_total_nodes, problem.vec))
-        vtu_path = os.path.join(root_path, f'vtk/sol_{fn.counter:03d}.vtu')
+        vtu_path = os.path.join(root_path, f'vtk/{problem_name}/sol_{fn.counter:03d}.vtu')
         save_sol(problem, sol, vtu_path, cell_infos=[('theta', params)])
         print(f"compliance = {obj_val}")
         print(f"max theta = {np.max(params)}, min theta = {np.min(params)}, mean theta = {np.mean(params)}")

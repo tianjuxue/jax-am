@@ -12,8 +12,8 @@ def problem():
     """Can be used to test the memory limit of JAX-FEM
     """
     problem_name = f'linear_elasticity'
-    meshio_mesh = box_mesh(100, 100, 100)
-    # meshio_mesh = box_mesh(10, 10, 10)
+    # meshio_mesh = box_mesh(100, 100, 100)
+    meshio_mesh = box_mesh(300, 100, 100)
     mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def left(point):
@@ -34,9 +34,12 @@ def problem():
                           dirichlet_val, zero_dirichlet_val, zero_dirichlet_val]]
  
     problem = LinearElasticity(problem_name, mesh, dirichlet_bc_info=dirichlet_bc_info)
-    sol = solver(problem, linear=True, precond=False)
+    sol = solver(problem, linear=True, precond=True)
     vtk_path = f"src/fem/data/vtk/{problem_name}/u.vtu"
     save_sol(problem, sol, vtk_path)
+
+
+    jax.profiler.save_device_memory_profile(f"src/fem/data/prof/memory.prof")
 
 
 if __name__ == "__main__":

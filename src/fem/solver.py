@@ -88,26 +88,8 @@ def operator_to_matrix(operator_fn, problem):
 
 
 def jacobi_preconditioner(problem, dofs):
-    if problem.C is None:
-        C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
-    else:
-        C = problem.C
-    C_sub = []
-    for i in range(problem.vec):
-        # (num_cells*num_quads, dim, dim)
-        C_sub.append(C[:, i*problem.dim:(i+1)*problem.dim, i*problem.dim:(i+1)*problem.dim])
-    # (num_cells, num_quads, num_nodes, dim) -> (num_cells*num_quads, num_nodes, 1, dim)
-    shape_grads_reshape = problem.shape_grads.reshape(-1, problem.num_nodes, 1, problem.dim)
-    vals = []
-    for i in range(problem.vec):
-    # (num_cells*num_quads, num_nodes, 1, dim) @ (num_cells*num_quads, 1, dim, dim) @ (num_cells*num_quads, num_nodes, dim, 1)
-    # (num_cells*num_quads, num_nodes) -> (num_cells, num_quads, num_nodes) -> (num_cells, num_nodes)
-        vals.append(np.sum((shape_grads_reshape @ C_sub[i][:, None, :, :] @ np.transpose(shape_grads_reshape, 
-                   axes=(0, 1, 3, 2))).reshape(problem.num_cells, problem.num_quads, problem.num_nodes) * problem.JxW[:, :, None], axis=1))
-    # (vec, num_cells, num_nodes) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
-    vals = np.transpose(np.stack(vals), axes=(1, 2, 0)).reshape(-1, problem.vec)
-    jacobi = np.zeros((problem.num_total_nodes, problem.vec))
-    jacobi = jacobi.at[problem.cells.reshape(-1)].add(vals)
+    print(f"Compute and use jacobi preconditioner")
+    jacobi = np.array(problem.A_sp_scipy.diagonal())
     jacobi = assign_ones_bc(jacobi.reshape(-1), problem) 
     return jacobi
 
@@ -124,6 +106,7 @@ def test_jacobi_precond(problem, jacobi, A_fn):
         test_vec = np.zeros(num_total_dofs)
         test_vec = test_vec.at[ind].set(1.)
         print(f"{A_fn(test_vec)[ind]}, {jacobi[ind]}, ratio = {A_fn(test_vec)[ind]/jacobi[ind]}")
+
 
     print(f"test jacobi preconditioner")
     print(f"np.min(jacobi) = {np.min(jacobi)}, np.max(jacobi) = {np.max(jacobi)}")
@@ -171,25 +154,24 @@ def solver(problem, initial_guess=None, linear=False, precond=True):
     res_fn = get_flatten_fn(res_fn, problem)
     res_fn = apply_bc(res_fn, problem) 
 
+    problem.newton_update(dofs.reshape(sol.shape))
+    A_fn = problem.compute_linearized_residual
+    A_fn = row_elimination(A_fn, problem)
+
     # TODO: more notes here
     if linear:
         # If we know the problem is linear, this way of solving seems faster.
-        A_fn = get_A_fn_linear_fn(dofs, res_fn)
-        # test_jacobi_precond(problem, jacobi_preconditioner(problem), A_fn)
         dofs = assign_bc(dofs, problem).reshape(-1)
         dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
     else:
-        problem.C = problem.newton_update(dofs.reshape(sol.shape))
-        A_fn = problem.compute_linearized_residual
-        A_fn = get_flatten_fn(A_fn, problem)
-        A_fn = row_elimination(A_fn, problem)
         dofs = linear_full_solve(problem, A_fn, precond, dofs)
         res_val = compute_residual_val(res_fn, dofs)
         print(f"Before, res l_2 = {res_val}") 
         tol = 1e-6
         while res_val > tol:
-            problem.C = problem.newton_update(dofs.reshape(sol.shape))
+            problem.newton_update(dofs.reshape(sol.shape))
             dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
+            # test_jacobi_precond(problem, jacobi_preconditioner(problem, dofs), A_fn)
             res_val = compute_residual_val(res_fn, dofs)
             print(f"res l_2 = {res_val}") 
 
@@ -265,9 +247,8 @@ def adjoint_method(problem, J_fn, output_sol, linear=False):
         """
         # The following two lines may not be needed
         problem.params = params
-        problem.C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
+        problem.D = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
         A_fn = problem.compute_linearized_residual
-        A_fn = get_flatten_fn(A_fn, problem)
         A_fn = row_elimination(A_fn, problem)
         def adjoint_linear_fn(adjoint):
             primals, f_vjp = jax.vjp(A_fn, dofs)
@@ -294,7 +275,7 @@ def adjoint_method(problem, J_fn, output_sol, linear=False):
         adjoint_linear_fn = get_vjp_contraint_fn_dofs(params, dofs)
         vjp_linear_fn = get_vjp_contraint_fn_params(params, dofs)
         # test_jacobi_precond(problem, jacobi_preconditioner(problem, dofs), adjoint_linear_fn)
-        problem.C = problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
+        problem.newton_update(dofs.reshape((problem.num_total_nodes, problem.vec)))
         pc = get_jacobi_precond(jacobi_preconditioner(problem, dofs))
         start = time.time()
         adjoint, info = jax.scipy.sparse.linalg.bicgstab(adjoint_linear_fn, partial_dJ_du, x0=None, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)

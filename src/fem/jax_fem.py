@@ -1,6 +1,8 @@
 import numpy as onp
 import jax
 import jax.numpy as np
+from jax.experimental.sparse import BCOO
+import scipy
 import os
 import sys
 import time
@@ -9,6 +11,7 @@ import matplotlib.pyplot as plt
 from functools import partial
 import gc
 from src.fem.generate_mesh import box_mesh, cylinder_mesh
+
 
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -48,6 +51,9 @@ class FEM:
         self.num_faces = 6
         self.num_cells = len(self.cells)
         self.num_total_nodes = len(self.mesh.points)
+        self.num_total_dofs = self.num_total_nodes*self.vec
+
+        start = time.time()
 
         # Some re-used quantities can be pre-computed and stored for better performance.
         self.shape_vals = self.get_shape_vals()
@@ -57,8 +63,10 @@ class FEM:
         # Note: Assume Dirichlet B.C. must be provided. This is probably true for all the problems we will encounter.
         self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
-        print(f"Done pre-computations")
-        print(f"Solving a problem with {len(self.cells)} cells, {self.num_total_nodes}x{self.vec} = {self.num_total_nodes*self.vec} dofs.")
+        end = time.time()
+        compute_time = end - start
+        print(f"\nDone pre-computations, took {compute_time} [s]")
+        print(f"Solving a problem with {len(self.cells)} cells, {self.num_total_nodes}x{self.vec} = {self.num_total_dofs} dofs.")
 
     def get_shape_val_functions(self):
         """Hard-coded first order shape functions in the reference domain.
@@ -93,10 +101,10 @@ class FEM:
         for i in range(quad_degree):
             for j in range(quad_degree):
                 for k in range(quad_degree):
-                   quad_points.append([(2*(k % 2) - 1) * np.sqrt(1./3.), 
-                                       (2*(j % 2) - 1) * np.sqrt(1./3.), 
-                                       (2*(i % 2) - 1) * np.sqrt(1./3.)])
-        quad_points = np.array(quad_points) # (quad_degree^dim, dim)
+                   quad_points.append([(2*(k % 2) - 1) * onp.sqrt(1./3.), 
+                                       (2*(j % 2) - 1) * onp.sqrt(1./3.), 
+                                       (2*(i % 2) - 1) * onp.sqrt(1./3.)])
+        quad_points = onp.array(quad_points) # (quad_degree^dim, dim)
         return quad_points
 
     def get_face_quad_points(self):
@@ -112,18 +120,18 @@ class FEM:
         face_quad_degree = 2
         face_quad_points = []
         face_normals = []
-        face_extremes = np.array([-1., 1.])
+        face_extremes = onp.array([-1., 1.])
         for d in range(self.dim):
             for s in face_extremes:
                 s_quad_points = []
                 for i in range(face_quad_degree):
                     for j in range(face_quad_degree):
-                        items = np.array([s, (2*(j % 2) - 1) * np.sqrt(1./3.), (2*(i % 2) - 1) * np.sqrt(1./3.)])
+                        items = onp.array([s, (2*(j % 2) - 1) * onp.sqrt(1./3.), (2*(i % 2) - 1) * onp.sqrt(1./3.)])
                         s_quad_points.append(list(np.roll(items, d)))            
                 face_quad_points.append(s_quad_points)
-                face_normals.append(list(np.roll(np.array([s, 0., 0.]), d)))
-        face_quad_points = np.array(face_quad_points)
-        face_normals = np.array(face_normals)
+                face_normals.append(list(onp.roll(onp.array([s, 0., 0.]), d)))
+        face_quad_points = onp.array(face_quad_points)
+        face_normals = onp.array(face_normals)
         return face_quad_points, face_normals
 
     def get_shape_vals(self):
@@ -145,11 +153,11 @@ class FEM:
      
             shape_vals.append(physical_shape_vals)
 
-        shape_vals = np.array(shape_vals)
+        shape_vals = onp.array(shape_vals)
         assert shape_vals.shape == (self.num_quads, self.num_nodes)
         return shape_vals
 
-    @partial(jax.jit, static_argnums=(0))
+    # @partial(jax.jit, static_argnums=(0))
     def get_shape_grads(self):
         """Pre-compute shape function gradient value
         The gradient is w.r.t physical coordinates.
@@ -172,14 +180,14 @@ class FEM:
                 shape_grad = shape_grad_fn(quad_point)
                 shape_grads_ref.append(shape_grad)
             shape_grads_reference.append(shape_grads_ref)
-        shape_grads_reference = np.array(shape_grads_reference) # (num_quads, num_nodes, dim)
+        shape_grads_reference = onp.array(shape_grads_reference) # (num_quads, num_nodes, dim)
         assert shape_grads_reference.shape == (self.num_quads, self.num_nodes, self.dim)
 
-        physical_coos = np.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
+        physical_coos = onp.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
         # (num_cells, num_quads, num_nodes, dim, dim) -> (num_cells, num_quads, 1, dim, dim)
-        jacobian_dx_deta = np.sum(physical_coos[:, None, :, :, None] * shape_grads_reference[None, :, :, None, :], axis=2, keepdims=True)
-        jacobian_det = np.linalg.det(jacobian_dx_deta)[:, :, 0] # (num_cells, num_quads)
-        jacobian_deta_dx = np.linalg.inv(jacobian_dx_deta)
+        jacobian_dx_deta = onp.sum(physical_coos[:, None, :, :, None] * shape_grads_reference[None, :, :, None, :], axis=2, keepdims=True)
+        jacobian_det = onp.linalg.det(jacobian_dx_deta)[:, :, 0] # (num_cells, num_quads)
+        jacobian_deta_dx = onp.linalg.inv(jacobian_dx_deta)
         # (1, num_quads, num_nodes, 1, dim) @ (num_cells, num_quads, 1, dim, dim) 
         # (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, dim)
         shape_grads_physical = (shape_grads_reference[None, :, :, None, :] @ jacobian_deta_dx)[:, :, :, 0, :]
@@ -209,7 +217,7 @@ class FEM:
                     physical_shape_vals.append(physical_shape_val)
                 f_shape_vals.append(physical_shape_vals)
             face_shape_vals.append(f_shape_vals)
-        face_shape_vals = np.array(face_shape_vals)
+        face_shape_vals = onp.array(face_shape_vals)
         return face_shape_vals
 
     # @partial(jax.jit, static_argnums=(0))
@@ -244,17 +252,17 @@ class FEM:
                 f_shape_grads_ref.append(f_shape_grads)
             face_shape_grads_reference.append(f_shape_grads_ref)
 
-        face_shape_grads_reference = np.array(face_shape_grads_reference) # (num_faces, num_face_quads, num_nodes, dim)
-        physical_coos = np.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
+        face_shape_grads_reference = onp.array(face_shape_grads_reference) # (num_faces, num_face_quads, num_nodes, dim)
+        physical_coos = onp.take(self.points, self.cells, axis=0) # (num_cells, num_nodes, dim)
         selected_coos = physical_coos[boundary_inds[:, 0]] # (num_selected_faces, num_nodes, dim)
         selected_f_shape_grads_ref = face_shape_grads_reference[boundary_inds[:, 1]] # (num_selected_faces, num_face_quads, num_nodes, dim)
         selected_f_normals = face_normals[boundary_inds[:, 1]] # (num_selected_faces, dim)
 
         # (num_selected_faces, 1, num_nodes, dim, 1) * (num_selected_faces, num_face_quads, num_nodes, 1, dim)
         # (num_selected_faces, num_face_quads, num_nodes, dim, dim) -> (num_selected_faces, num_face_quads, dim, dim)
-        jacobian_dx_deta = np.sum(selected_coos[:, None, :, :, None] * selected_f_shape_grads_ref[:, :, :, None, :], axis=2)
-        jacobian_det = np.linalg.det(jacobian_dx_deta) # (num_selected_faces, num_face_quads)
-        jacobian_deta_dx = np.linalg.inv(jacobian_dx_deta) # (num_selected_faces, num_face_quads, dim, dim)
+        jacobian_dx_deta = onp.sum(selected_coos[:, None, :, :, None] * selected_f_shape_grads_ref[:, :, :, None, :], axis=2)
+        jacobian_det = onp.linalg.det(jacobian_dx_deta) # (num_selected_faces, num_face_quads)
+        jacobian_deta_dx = onp.linalg.inv(jacobian_dx_deta) # (num_selected_faces, num_face_quads, dim, dim)
 
         # (1, num_face_quads, num_nodes, 1, dim) @ (num_selected_faces, num_face_quads, 1, dim, dim)
         # (num_selected_faces, num_face_quads, num_nodes, 1, dim) -> (num_selected_faces, num_face_quads, num_nodes, dim)
@@ -262,7 +270,7 @@ class FEM:
 
         # (num_selected_faces, 1, 1, dim) @ (num_selected_faces, num_face_quads, dim, dim)
         # (num_selected_faces, num_face_quads, 1, dim) -> (num_selected_faces, num_face_quads)
-        nanson_scale = np.linalg.norm((selected_f_normals[:, None, None, :] @ jacobian_deta_dx)[:, :, 0, :], axis=-1)
+        nanson_scale = onp.linalg.norm((selected_f_normals[:, None, None, :] @ jacobian_deta_dx)[:, :, 0, :], axis=-1)
         quad_weights = 1.
         nanson_scale = nanson_scale * jacobian_det * quad_weights
         return face_shape_grads_physical, nanson_scale
@@ -275,9 +283,9 @@ class FEM:
         physical_quad_points: ndarray
             (num_cells, num_quads, dim) 
         """
-        physical_coos = np.take(self.points, self.cells, axis=0)
+        physical_coos = onp.take(self.points, self.cells, axis=0)
         # (1, num_quads, num_nodes, 1) * (num_cells, 1, num_nodes, dim) -> (num_cells, num_quads, dim) 
-        physical_quad_points = np.sum(self.shape_vals[None, :, :, None] * physical_coos[:, None, :, :], axis=2)
+        physical_quad_points = onp.sum(self.shape_vals[None, :, :, None] * physical_coos[:, None, :, :], axis=2)
         return physical_quad_points
 
     def get_physical_surface_quad_points(self, boundary_inds):
@@ -293,11 +301,11 @@ class FEM:
         physical_surface_quad_points: ndarray
             (num_selected_faces, num_face_quads, dim) 
         """
-        physical_coos = np.take(self.points, self.cells, axis=0)
+        physical_coos = onp.take(self.points, self.cells, axis=0)
         selected_coos = physical_coos[boundary_inds[:, 0]] # (num_selected_faces, num_nodes, dim)
         selected_face_shape_vals = self.face_shape_vals[boundary_inds[:, 1]] # (num_selected_faces, num_face_quads, num_nodes)  
         # (num_selected_faces, num_face_quads, num_nodes, 1) * (num_selected_faces, 1, num_nodes, dim) -> (num_selected_faces, num_face_quads, dim) 
-        physical_surface_quad_points = np.sum(selected_face_shape_vals[:, :, :, None] * selected_coos[:, None, :, :], axis=2)
+        physical_surface_quad_points = onp.sum(selected_face_shape_vals[:, :, :, None] * selected_coos[:, None, :, :], axis=2)
         return physical_surface_quad_points
 
     def Dirichlet_boundary_conditions(self, dirichlet_bc_info):
@@ -330,8 +338,8 @@ class FEM:
         vec_inds_list = []
         vals_list = []
         for i in range(len(location_fns)):
-            node_inds = np.argwhere(jax.vmap(location_fns[i])(self.mesh.points)).reshape(-1)
-            vec_inds = np.ones_like(node_inds, dtype=np.int32)*vecs[i]
+            node_inds = onp.argwhere(jax.vmap(location_fns[i])(self.mesh.points)).reshape(-1)
+            vec_inds = onp.ones_like(node_inds, dtype=onp.int32)*vecs[i]
             values = jax.vmap(value_fns[i])(self.mesh.points[node_inds].reshape(-1, self.dim))
             node_inds_list.append(node_inds)
             vec_inds_list.append(vec_inds)
@@ -355,7 +363,7 @@ class FEM:
             (6, 4) = (num_faces, num_face_quads)
         """
         # TODO: Hard-coded
-        node_points = np.array([[-1., -1., -1.],
+        node_points = onp.array([[-1., -1., -1.],
                                 [1., -1, -1.],
                                 [1., 1., -1.],
                                 [-1., 1., -1.],
@@ -364,11 +372,11 @@ class FEM:
                                 [1., 1., 1.],
                                 [-1., 1., 1.]])
         face_inds = []
-        face_extremes = np.array([-1., 1.])
+        face_extremes = onp.array([-1., 1.])
         for d in range(self.dim):
             for s in face_extremes:
-                face_inds.append(np.argwhere(np.isclose(node_points[:, d], s)).reshape(-1))
-        face_inds = np.array(face_inds)
+                face_inds.append(onp.argwhere(onp.isclose(node_points[:, d], s)).reshape(-1))
+        face_inds = onp.array(face_inds)
         return face_inds
 
     def Neuman_boundary_conditions_inds(self, location_fns):
@@ -387,17 +395,17 @@ class FEM:
             boundary_inds_list[i, j] returns the index of face j of cell i
         """
         face_inds = self.get_face_inds()
-        cell_points = np.take(self.points, self.cells, axis=0)
-        cell_face_points = np.take(cell_points, face_inds, axis=1) # (num_cells, num_faces, num_face_nodes, dim)
+        cell_points = onp.take(self.points, self.cells, axis=0)
+        cell_face_points = onp.take(cell_points, face_inds, axis=1) # (num_cells, num_faces, num_face_nodes, dim)
         boundary_inds_list = []
         for i in range(len(location_fns)):
             vmap_location_fn = jax.vmap(location_fns[i])
             def on_boundary(cell_points):
                 boundary_flag = vmap_location_fn(cell_points)
-                return np.all(boundary_flag)
+                return onp.all(boundary_flag)
             vvmap_on_boundary = jax.vmap(jax.vmap(on_boundary))
             boundary_flags = vvmap_on_boundary(cell_face_points)
-            boundary_inds = np.argwhere(boundary_flags) # (num_selected_faces, 2)
+            boundary_inds = onp.argwhere(boundary_flags) # (num_selected_faces, 2)
             boundary_inds_list.append(boundary_inds)
         return boundary_inds_list
 
@@ -445,78 +453,134 @@ class Laplace(FEM):
         self.neumann = self.compute_Neumann_integral(neumann_bc_info)
         # (num_cells, num_quads, num_nodes, 1, dim)
         self.v_grads_JxW = self.shape_grads[:, :, :, None, :] * self.JxW[:, :, None, None, None]
-        self.C = None
+        self.mass_kernel_flag = False
+        self.laplace_kernel_flag = True
 
     def get_tensor_map(self):
         raise NotImplementedError(f"Child class must override this function.")
 
-    def compute_linearized_residual(self, sol):
-        """Compute linearized residual vector from the weak form.
-        This is the most central function in our FEM implemnetation.
-        The function takes a lot of memory - Thinking about ways for memory saving...
-        E.g., (num_cells, num_quads, num_nodes, vec, dim) takes 4.6G memory for num_cells=1,000,000
+    def get_mass_map(self):
+        raise NotImplementedError(f"Child class must override this function.")
 
-        TODO: Check if reduced integration helps, and to what extent.
+    def get_laplace_kernel(self, tensor_map):
+        def laplace_kernel(cell_sol, cell_shape_grads, cell_v_grads_JxW, *cell_internal_vars):
+            # (1, num_nodes, vec, 1) * (num_quads, num_nodes, 1, dim) -> (num_quads, num_nodes, vec, dim)
+            u_grads = cell_sol[None, :, :, None] * cell_shape_grads[:, :, None, :] 
+            u_grads = np.sum(u_grads, axis=1) # (num_quads, vec, dim)
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim) # (num_quads, vec, dim) 
+            # (num_quads, vec, dim) 
+            u_physics = jax.vmap(tensor_map)(u_grads_reshape, *cell_internal_vars).reshape(u_grads.shape) 
+            # (num_quads, num_nodes, vec, dim) -> (num_nodes, vec) -> (num_nodes, vec)
+            val = np.sum(u_physics[:, None, :, :] * cell_v_grads_JxW, axis=(0, -1))
+            return val
+        return laplace_kernel
 
-        Parameters
-        ----------
-        sol: ndarray
-            (num_total_nodes, vec) 
+    def get_mass_kernel(self, mass_map):
+        def mass_kernel(cell_sol, cell_JxW, *cell_internal_vars):
+            # (1, num_nodes, vec) * (num_quads, num_nodes, 1) -> (num_quads, num_nodes, vec) -> (num_quads, vec)
+            u = np.sum(cell_sol[None, :, :] * self.shape_vals[:, :, None], axis=1)
+            u_physics = jax.vmap(mass_map)(u, *cell_internal_vars) # (num_quads, vec) 
+            # (num_quads, 1, vec) * (num_quads, num_nodes, 1) * (num_quads, None, None) -> (num_nodes, vec)
+            val = np.sum(u_physics[:, None, :] * self.shape_vals[:, :, None] * cell_JxW[:, None, None], axis=0)
+            return val
+        return mass_kernel    
 
-        Returns
-        -------
-        res: ndarray
-            (num_total_nodes, vec) 
-        """
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
-        u_grads = sol[self.cells][:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
-        u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
-        u_grads_reshape = u_grads.reshape(-1, self.vec * self.dim) # (num_cells*num_quads, vec*dim)
-        # (num_cells*num_quads, vec*dim, vec*dim) * (num_cells*num_quads, 1, vec*dim) -> (num_cells*num_quads, vec*dim, 1)
-        u_physics = np.sum(self.C * u_grads_reshape[:, None, :], axis=(2)).reshape(u_grads.shape) # (num_cells, num_quads, vec, dim)
-        # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
-        weak_form = np.sum(u_physics[:, :, None, :, :] * self.v_grads_JxW, axis=(1, -1)).reshape(-1, self.vec) 
-        res = np.zeros_like(sol)
-        res = res.at[self.cells.reshape(-1)].add(weak_form)
-        return res
+    def unpack_kernels_vars(self, **internal_vars):
+        if 'mass' in internal_vars.keys():
+            mass_internal_vars = internal_vars['mass']
+        else:
+            mass_internal_vars = ()
 
-    def compute_residual_vars(self, sol, *internal_vars):
-        """TODO: add comments
-        """
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
-        u_grads = sol[self.cells][:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
-        u_grads = np.sum(u_grads, axis=2)
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim) # (num_cells*num_quads, vec, dim) 
-        tensor_map = self.get_tensor_map()
-        # (num_cells, num_quads, vec, dim) 
-        u_physics = jax.vmap(tensor_map, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(u_grads.shape) 
-        # (num_cells, num_quads, num_nodes, vec, dim) -> (num_cells, num_nodes, vec) -> (num_cells*num_nodes, vec)
-        weak_form = np.sum(u_physics[:, :, None, :, :] * self.v_grads_JxW, axis=(1, -1)).reshape(-1, self.vec) 
+        if 'laplace' in internal_vars.keys():
+            laplace_internal_vars = internal_vars['laplace']
+        else:
+            laplace_internal_vars = ()
+
+        return [mass_internal_vars, laplace_internal_vars]        
+
+    def get_kernel_fn(self):
+        def kernel(cell_sol, cell_shape_grads, cell_JxW, cell_v_grads_JxW, cell_mass_internal_vars, cell_laplace_internal_vars):
+            if self.mass_kernel_flag:
+                mass_kernel = self.get_mass_kernel(self.get_mass_map())
+                mass_val = mass_kernel(cell_sol, cell_JxW, *cell_mass_internal_vars)
+            else:
+                mass_val = 0.
+
+            if self.laplace_kernel_flag:
+                laplace_kernel = self.get_laplace_kernel(self.get_tensor_map())
+                laplace_val = laplace_kernel(cell_sol, cell_shape_grads, cell_v_grads_JxW, *cell_laplace_internal_vars)
+            else:
+                laplace_val = 0.
+            
+            return laplace_val + mass_val
+
+        def D_fn(cell_sol, *args):
+            return jax.jacrev(kernel)(cell_sol, *args)
+
+        return kernel, D_fn
+
+    def split_and_compute(self, cells_sol, fn, np_version, **internal_vars):
+        vmap_fn = jax.jit(jax.vmap(fn))
+        kernal_vars = self.unpack_kernels_vars(**internal_vars)
+        num_cuts = 20
+        if num_cuts > len(self.cells):
+            num_cuts = len(self.cells)
+        batch_size = len(self.cells) // num_cuts
+        input_collection = [cells_sol, self.shape_grads, self.JxW, self.v_grads_JxW, *kernal_vars]
+        values = []
+        for i in range(num_cuts):
+            if i < num_cuts - 1:
+                input_col = jax.tree_map(lambda x: x[i*batch_size:(i + 1)*batch_size], input_collection)
+            else:
+                input_col = jax.tree_map(lambda x: x[i*batch_size:], input_collection)
+
+            val = vmap_fn(*input_col)
+            values.append(val)
+
+        # np_version set to jax.numpy allows for auto diff, but uses GPU memory
+        # np_version set to ordinary numpy saves GPU memory, but can't use auto diff 
+        values = np_version.vstack(values)
+        return values
+
+    def compute_residual_vars(self, sol, **internal_vars):
+        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
+        kernel, _ = self.get_kernel_fn()
+        weak_form = self.split_and_compute(cells_sol, kernel, np, **internal_vars) # (num_cells, num_nodes, vec)
+        weak_form = weak_form.reshape(-1, self.vec) # (num_cells*num_nodes, vec)
         res = np.zeros_like(sol)
         res = res.at[self.cells.reshape(-1)].add(weak_form) - self.body_force - self.neumann
         return res 
 
     def compute_residual(self, sol):
-        """Chile class should override if internal variables exist
+        """Child class should override if internal variables exist
         """
         return self.compute_residual_vars(sol)
 
-    def newton_vars(self, sol, *internal_vars):
+    def newton_vars(self, sol, **internal_vars):
         print(f"Update solution, internal variable...")
-        # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
-        u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
-        u_grads_reshape = np.sum(u_grads, axis=2).reshape(-1, self.vec, self.dim) # (num_cells*num_quads, vec, dim)  
-        tensor_map = self.get_tensor_map()
-        def C_fn(u_grad, *args):
-            return jax.jacfwd(tensor_map)(u_grad, *args)
-        C = jax.vmap(C_fn, in_axes=(0,)*(len(internal_vars) + 1))(u_grads_reshape, *internal_vars).reshape(-1, self.vec*self.dim, self.vec*self.dim)
-        print(f"Done.")
-        return C
+        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
+        _, D_fn = self.get_kernel_fn()
+        print(f"Compute D...")
+        D = self.split_and_compute(cells_sol, D_fn, onp, **internal_vars)
+        V = D.reshape(-1)
+        inds = (self.vec * self.cells[:, :, None] + onp.arange(self.vec)[None, None, :]).reshape(self.num_cells, -1)
+        I = onp.repeat(inds[:, :, None], self.num_nodes*self.vec, axis=2).reshape(-1)
+        J = onp.repeat(inds[:, None, :], self.num_nodes*self.vec, axis=1).reshape(-1)
+        print(f"type(V) = {type(V)}, type(I) = {type(I)}, type(J) = {type(J)}")
+        print(f"Creating sparse matrix with scipy...")
+        self.A_sp_scipy = scipy.sparse.csc_array((V, (I, J)), shape=(self.num_total_dofs, self.num_total_dofs)) 
+        print(f"Creating sparse matrix from scipy using JAX BCOO...")
+        self.A_sp = BCOO.from_scipy_sparse(self.A_sp_scipy)
+        print(f"self.A_sp.data.shape = {self.A_sp.data.shape}")
+        print(f"Global sparse matrix takes about {self.A_sp.data.shape[0]*8*3/2**30} G memory to store.")
 
     def newton_update(self, sol):
-        """Chile class should override if internal variables exist
+        """Child class should override if internal variables exist
         """
         return self.newton_vars(sol)
+
+    def compute_linearized_residual(self, dofs):
+        return self.A_sp @ dofs
 
     def compute_body_force(self, source_info):
         """In the weak form, we have (body_force, v) * dx, and this function computes this.
@@ -549,7 +613,7 @@ class Laplace(FEM):
 
         Parameters
         ----------
-        neumann_bc_info: [location_fns, boundary_inds_list]
+        neumann_bc_info: [location_fns, value_fns]
             location_fns: list[callable]
             value_fns: list[callable]
 
@@ -724,21 +788,20 @@ class Plasticity(Laplace):
         self.name = name
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
-        self.epsilons_old = np.zeros((len(self.cells)*self.num_quads, self.vec, self.dim))
-        self.sigmas_old = np.zeros_like(self.epsilons_old)
+        self.epsilons_old = onp.zeros((len(self.cells), self.num_quads, self.vec, self.dim))
+        self.sigmas_old = onp.zeros_like(self.epsilons_old)
 
     def get_tensor_map(self):
         _, stress_return_map = self.get_maps()
         return stress_return_map
 
     def newton_update(self, sol):
-        return self.newton_vars(sol, self.sigmas_old, self.epsilons_old)
+        return self.newton_vars(sol, laplace=[self.sigmas_old, self.epsilons_old])
 
     def compute_residual(self, sol):
-        return self.compute_residual_vars(sol, self.sigmas_old, self.epsilons_old)
+        return self.compute_residual_vars(sol, laplace=[self.sigmas_old, self.epsilons_old])
 
     def get_maps(self):
-
         EPS = 1e-10
         # TODO
         def safe_sqrt(x):  
@@ -778,24 +841,23 @@ class Plasticity(Laplace):
 
     def stress_strain_fns(self):
         strain, stress_return_map = self.get_maps()
-        vmap_strain = jax.vmap(strain)
-        vmap_stress_return_map = jax.vmap(stress_return_map)
+        vmap_strain = jax.vmap(jax.vmap(strain))
+        vmap_stress_return_map = jax.vmap(jax.vmap(stress_return_map))
         return vmap_strain, vmap_stress_return_map
 
     def update_stress_strain(self, sol):
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
         u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
-        u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)  
-        u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)  # (num_cells*num_quads, vec, dim)  
+        u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim)
         vmap_strain, vmap_stress_rm = self.stress_strain_fns()
-        self.sigmas_old = vmap_stress_rm(u_grads_reshape, self.sigmas_old, self.epsilons_old)
-        self.epsilons_old = vmap_strain(u_grads_reshape)
+        self.sigmas_old = vmap_stress_rm(u_grads, self.sigmas_old, self.epsilons_old)
+        self.epsilons_old = vmap_strain(u_grads)
 
     def compute_avg_stress(self):
         """For post-processing only
         """
         # num_cells*num_quads, vec, dim) * (num_cells*num_quads, 1, 1)
-        sigma = np.sum(self.sigmas_old * self.JxW.reshape(-1)[:, None, None], 0)
+        sigma = np.sum(self.sigmas_old.reshape(-1, self.vec, self.dim) * self.JxW.reshape(-1)[:, None, None], 0)
         vol = np.sum(self.JxW)
         avg_sigma = sigma/vol
         return avg_sigma
@@ -806,5 +868,5 @@ class Mesh():
     """
     def __init__(self, points, cells):
         # TODO: Assert that cells must have correct orders 
-        self.points = np.array(points)
-        self.cells = np.array(cells)
+        self.points = points
+        self.cells = cells
