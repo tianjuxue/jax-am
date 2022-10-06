@@ -4,7 +4,7 @@ API reference
 Abstract ODE solver
 -------------------
 
-.. automodule:: src.abstract_solver
+.. automodule:: modules.phase_field.abstract_solver
    :members:
 
 
@@ -12,5 +12,5 @@ Abstract ODE solver
 Utility functions
 -----------------
 
-.. automodule:: src.utils
+.. automodule:: modules.phase_field.utils
    :members: get_unique_ori_colors

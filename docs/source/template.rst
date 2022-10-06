@@ -10,30 +10,30 @@ Template
 Installation
 ------------
 
-To use src.lumache, first install it using pip:
+To use template.lumache, first install it using pip:
 
 .. code-block:: console
 
-   (.venv) $ pip install src.lumache
+   (.venv) $ pip install template.lumache
 
 Creating recipes
 ----------------
 
 To retrieve a list of random ingredients,
-you can use the ``src.lumache.get_random_ingredients()`` function:
+you can use the ``template.lumache.get_random_ingredients()`` function:
 
-.. autofunction:: src.lumache.get_random_ingredients
+.. autofunction:: template.lumache.get_random_ingredients
 
 The ``kind`` parameter should be either ``"meat"``, ``"fish"``,
-or ``"veggies"``. Otherwise, :py:func:`src.lumache.get_random_ingredients`
+or ``"veggies"``. Otherwise, :py:func:`template.lumache.get_random_ingredients`
 will raise an exception.
 
-.. autoexception:: src.lumache.InvalidKindError
+.. autoexception:: template.lumache.InvalidKindError
 
 For example:
 
->>> import src.lumache
->>> src.lumache.get_random_ingredients()
+>>> import template.lumache
+>>> template.lumache.get_random_ingredients()
 ['shells', 'gorgonzola', 'parsley']
 
 
@@ -51,9 +51,9 @@ Python codes
 ------------
 
 To retrieve a list of random ingredients,
-you can use the ``src.lumache.get_random_ingredients()`` function:
+you can use the ``template.lumache.get_random_ingredients()`` function:
 
-.. py:function:: src.lumache.get_random_ingredients(kind=None)
+.. py:function:: template.lumache.get_random_ingredients(kind=None)
    :noindex:
 
    Return a list of random ingredients as strings.
