@@ -28,4 +28,13 @@ yaml_filepath = os.path.realpath(os.path.join(os.path.dirname(__file__), 'pre-pr
 with open(yaml_filepath) as f:
     args = yaml.load(f, Loader=yaml.FullLoader)
     print(f"YAML parameters:")
+    # TODO: These are just default parameters
     print(yaml.dump(args, default_flow_style=False))
+    print(f"These are default parameters")
+
+args['root_path'] = os.path.dirname(__file__)
+
+data_folders = ['mp4', 'neper', 'numpy', 'pdf', 'png', 'vtk', 'txt']
+
+for data_folder in data_folders:
+	os.makedirs(os.path.join(args['root_path'], 'data', data_folder), exist_ok=True)

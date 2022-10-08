@@ -1,48 +1,24 @@
 import jax
 import jax.numpy as np
 from functools import partial
-from modules.yaml_parse import args
-from modules.abstract_solver import ODESolver
-from modules.utils import read_path
-
-
-@partial(jax.jit, static_argnums=(1,))
-def get_T(t, polycrystal):
-    '''
-    Analytic T from https://doi.org/10.1016/j.actamat.2021.116862
-    '''
-    centroids = polycrystal.centroids
-
-    Q = 25
-    alpha = 5.2
-    kappa = 2.7*1e-2
-    x0 = 0.2*args['domain_x']
-    vel = 0.6*args['domain_x'] / args['laser_path']['time'][-1]
-
-    X = centroids[:, 0] - x0 - vel * t
-    Y = centroids[:, 1] - 0.5*args['domain_y']
-    Z = centroids[:, 2] - args['domain_z']
-    R = np.sqrt(X**2 + Y**2 + Z**2)
-    T = args['T_ambient'] + Q / (2 * np.pi * kappa) / R * np.exp(-vel / (2*alpha) * (R + X))
-
-    # TODO: Not quite elegant here
-    T = np.where(T > 2000., 2000., T)
-
-    return T[:, None]
+from modules.phase_field.yaml_parse import args
+from modules.phase_field.abstract_solver import ODESolver
+from modules.phase_field.utils import read_path
 
 
 class CFDSolver(ODESolver):
-    def __init__(self, polycrystal):
+    def __init__(self, polycrystal, T_fn):
         super().__init__(polycrystal)
+        self.T_fn = T_fn
 
 
     def stepper(self, state_pre, t_crt, ode_params):
-        T = get_T(t_crt, self.polycrystal)
+        T = self.T_fn(t_crt, self.polycrystal)
         return (T, t_crt), T
         
 
     def ini_cond(self):
-        T0 = get_T(0., self.polycrystal)
+        T0 = self.T_fn(0., self.polycrystal)
         return T0
 
 

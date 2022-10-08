@@ -2,10 +2,10 @@ import jax
 import jax.numpy as np
 import numpy as onp
 from functools import partial
-from modules.yaml_parse import args
-from modules.utils import read_path, walltime, Field
-from modules.allen_cahn import PFSolver
-from modules.cfd import CFDSolver
+from modules.phase_field.yaml_parse import args
+from modules.phase_field.utils import read_path, walltime, Field
+from modules.phase_field.allen_cahn import PFSolver
+from modules.phase_field.cfd import CFDSolver
 
 
 class MultiVarSolver:
@@ -13,8 +13,9 @@ class MultiVarSolver:
     One-way coupling of CFD solver and PF solver.
     Namely, PF solver consumes temperature field produced by CFD solver in each time step.
     '''
-    def __init__(self):
+    def __init__(self, T_fn):
         self.polycrystal = Field()
+        self.T_fn = T_fn
 
     @walltime
     def solve(self):
@@ -22,12 +23,11 @@ class MultiVarSolver:
         pf_solver = PFSolver(self.polycrystal)
         pf_sol0 = pf_solver.ini_cond()
 
-        cfd_solver = CFDSolver(self.polycrystal)
+        cfd_solver = CFDSolver(self.polycrystal, self.T_fn)
         cfd_sol0 = cfd_solver.ini_cond()
 
         # TODO: We only need ts here, perhaps even don't need ts.
         ts, xs, ys, ps = read_path()
-  
 
         pf_solver.clean_sols()
 

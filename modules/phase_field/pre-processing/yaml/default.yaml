@@ -88,7 +88,7 @@ m_g: 2.4e-4
  
 ###
 # anisotropy (phase-field parameter). Unit: []
-anisotropy: 0.15
+anisotropy: 0.
  
 ###
 # An ad-hoc parameter (phase-field parameter). Unit: []

@@ -37,8 +37,8 @@ Solving Problems in Additive Manufacturing
   Microstructure
 
 
-Simulating Explict Dynamics with JAX
-------------------------------------
+Scientific Simulations with JAX
+-------------------------------
 
 We use `JAX <https://github.com/google/jax>`_ for implementation of the computationally intensive part. The polycrystal structure is generated with `Neper <https://neper.info/>`_. 
 
