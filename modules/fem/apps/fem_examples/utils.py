@@ -9,7 +9,6 @@ plt.rcParams.update({
     "font.family": "sans-serif",
     "font.sans-serif": ["Helvetica"]})
 
- 
 
 def plot_plastic_stress_strain():
     problem_names = ["linear_elasticity", "hyperelasticity", "plasticity"]
@@ -37,7 +36,8 @@ def plot_plastic_stress_strain():
 
 def plot_performance():
     data_path = f"modules/fem/apps/fem_examples/data/"
-    abaqus_time = onp.loadtxt(os.path.join(data_path, f"txt/abaqus_fem_time.txt"))
+    abaqus_cpu_time = onp.loadtxt(os.path.join(data_path, f"txt/abaqus_fem_cpu_time.txt"))
+    abaqus_mpi_time = onp.loadtxt(os.path.join(data_path, f"txt/abaqus_fem_mpi_time.txt"))
     fenicsx_time_np_1 = onp.loadtxt(os.path.join(data_path, f"txt/fenicsx_fem_time_mpi_np_1.txt"))
     fenicsx_time_np_2 = onp.loadtxt(os.path.join(data_path, f"txt/fenicsx_fem_time_mpi_np_2.txt"))
     fenicsx_time_np_4 = onp.loadtxt(os.path.join(data_path, f"txt/fenicsx_fem_time_mpi_np_4.txt"))
@@ -46,25 +46,14 @@ def plot_performance():
     cpu_dofs = onp.loadtxt(os.path.join(data_path, f"txt/jax_fem_cpu_dof.txt"))   
     gpu_dofs = onp.loadtxt(os.path.join(data_path, f"txt/jax_fem_gpu_dof.txt"))   
 
-    # tick_labels = ['25x25x25', '50x50x50', '100x100x100']
-    # labels = ['fenicsx-np-1', 'fenicsx-np-2', 'fenicsx-np-4', 'jax-cpu', 'jax-gpu']
-    # colors = ['orange', 'purple', 'green', 'red', 'blue']
-    # markers = ['^', '^', '^', 'o', 'o']
-
-
     plt.figure(figsize=(12, 9))
-    # plt.figure()
-    # plt_tmp = onp.arange(len(problem[0])) + 1
-    # for j, p in enumerate(problem):
-    #     plt.plot(plt_tmp, p, linestyle='-', marker=markers[j], markersize=10, linewidth=2, color=colors[j], label=labels[j])
-
-    plt.plot(gpu_dofs[1:], abaqus_time[1:], linestyle='-', marker='s', markersize=12, linewidth=2, color='orange', label='Abaqus CPU')
-    plt.plot(cpu_dofs[1:], fenicsx_time_np_1[1:], linestyle='-', marker='^', markersize=12, linewidth=2, color='purple', label='FEniCSx CPU MPI 1')
+    plt.plot(gpu_dofs[1:], abaqus_cpu_time[1:], linestyle='-', marker='s', markersize=12, linewidth=2, color='orange', label='Abaqus CPU')
+    plt.plot(gpu_dofs[1:], abaqus_mpi_time[1:], linestyle='-', marker='s', markersize=12, linewidth=2, color='brown', label='Abaqus CPU MPI 24')
+    plt.plot(cpu_dofs[1:], fenicsx_time_np_1[1:], linestyle='-', marker='^', markersize=12, linewidth=2, color='purple', label='FEniCSx CPU')
     plt.plot(cpu_dofs[1:], fenicsx_time_np_2[1:], linestyle='-', marker='^', markersize=12, linewidth=2, color='green', label='FEniCSx CPU MPI 2')
     plt.plot(cpu_dofs[1:], fenicsx_time_np_4[1:], linestyle='-', marker='^', markersize=12, linewidth=2, color='pink', label='FEniCSx CPU MPI 4')
     plt.plot(cpu_dofs[1:], jax_time_cpu[1:], linestyle='-', marker='o', markersize=12, linewidth=2, color='blue', label='JAX-FEM CPU')
     plt.plot(gpu_dofs[1:], jax_time_gpu[1:], linestyle='-', marker='o', markersize=12, linewidth=2, color='red', label='JAX-FEM GPU')
-
 
     plt.xscale('log')
     plt.yscale('log')

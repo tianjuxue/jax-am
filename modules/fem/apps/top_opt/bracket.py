@@ -1,3 +1,5 @@
+"""The example is not used and should be deprecated.
+"""
 import numpy as onp
 import jax
 import jax.numpy as np
@@ -149,13 +151,9 @@ def topology_optimization():
         return c, gradc
 
     optimizationParams = {'maxIters':50, 'minIters':50, 'relTol':0.05}
-
     rho_ini = vf*np.ones(len(problem.flex_inds))
-
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=1)
-
     onp.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
-    
     print(f"Compliance = {fn(np.ones(len(problem.flex_inds)))} for full material")
 
 

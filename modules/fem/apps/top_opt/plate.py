@@ -81,11 +81,8 @@ def topology_optimization():
         return c, gradc
 
     optimizationParams = {'maxIters':100, 'minIters':100, 'relTol':0.05}
-
     rho_ini = vf*np.ones(len(problem.flex_inds))
-
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=1)
-
     onp.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
     print(f"Compliance = {fn(np.ones(len(problem.flex_inds)))} for full material")
 

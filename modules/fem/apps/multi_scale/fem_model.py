@@ -10,11 +10,12 @@ from modules.fem.apps.multi_scale.utils import tensor_to_flat
 class HyperElasticity(Laplace):
     """Three modes: rve, dns, nn
     """
-    def __init__(self, name, mesh, mode=None, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None, periodic_bc_info=None):
+    def __init__(self, name, mesh, mode=None, dns_info=None, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None, periodic_bc_info=None):
         self.name = name
         self.vec = 3
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
         self.mode = mode
+        self.dns_info = dns_info
         if self.mode == 'rve':
             self.H_bar = None
             self.physical_quad_points = self.get_physical_quad_points()
@@ -26,6 +27,7 @@ class HyperElasticity(Laplace):
             self.E, self.nu = self.compute_moduli()
         elif self.mode == 'nn':
             # hyperparam = 'default'
+            # It turns out that MLP2 has the lowest validation error.
             hyperparam = 'MLP2'
             self.nn_batch_forward = get_nn_batch_forward(hyperparam)
         else:
@@ -33,7 +35,7 @@ class HyperElasticity(Laplace):
 
     def compute_residual(self, sol):
         if self.mode == 'rve' or self.mode == 'dns' :
-            return self.compute_residual_vars(sol, self.E, self.nu)
+            return self.compute_residual_vars(sol, laplace=[self.E, self.nu])
         elif self.mode == 'nn':
             return self.compute_residual_vars(sol)
         else:
@@ -46,7 +48,7 @@ class HyperElasticity(Laplace):
 
     def newton_update(self, sol):
         if self.mode == 'dns':
-            return self.newton_vars(sol, self.E, self.nu)
+            return self.newton_vars(sol, laplace=[self.E, self.nu])
         elif self.mode == 'nn':
             return self.newton_vars(sol)
         else:
@@ -65,16 +67,16 @@ class HyperElasticity(Laplace):
     def stress_strain_fns(self):
         if self.mode == 'rve':  
             stress, psi = self.maps_rve()
-            vmap_stress = lambda x: jax.vmap(stress)(x, self.E, self.nu)
-            vmap_energy = lambda x: jax.vmap(psi)(x + self.H_bar[None, :, :], self.E, self.nu)
+            vmap_stress = lambda x: jax.vmap(jax.vmap(stress))(x, self.E, self.nu)
+            vmap_energy = lambda x: jax.vmap(jax.vmap(psi))(x + self.H_bar[None, None, :, :], self.E, self.nu)
         elif self.mode == 'dns':
             stress, psi = self.maps_dns()
-            vmap_stress = lambda x: jax.vmap(stress)(x, self.E, self.nu)
-            vmap_energy = lambda x: jax.vmap(psi)(x, self.E, self.nu)
+            vmap_stress = lambda x: jax.vmap(jax.vmap(stress))(x, self.E, self.nu)
+            vmap_energy = lambda x: jax.vmap(jax.vmap(psi))(x, self.E, self.nu)
         elif self.mode == 'nn':
             stress, psi = self.maps_nn()
-            vmap_stress = jax.vmap(stress)
-            vmap_energy = jax.vmap(psi)
+            vmap_stress = jax.vmap(jax.vmap(stress))
+            vmap_energy = jax.vmap(jax.vmap(psi))
         else:
             raise NotImplementedError(f"get_maps Only support rve, dns or nn.")
         return vmap_stress, vmap_energy
@@ -138,9 +140,9 @@ class HyperElasticity(Laplace):
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim) 
         u_grads = np.take(sol, self.cells, axis=0)[:, None, :, :, None] * self.shape_grads[:, :, :, None, :] 
         u_grads = np.sum(u_grads, axis=2) # (num_cells, num_quads, vec, dim) 
-        F_reshape = u_grads.reshape(-1, self.vec, self.dim) + np.eye(self.dim)[None, :, :]
+        F_reshape = u_grads + np.eye(self.dim)[None, None, :, :]
         _, vmap_energy  = self.stress_strain_fns()
-        psi = vmap_energy(F_reshape).reshape(u_grads.shape[:2]) # (num_cells, num_quads)
+        psi = vmap_energy(F_reshape) # (num_cells, num_quads)
         energy = np.sum(psi * self.JxW)
         return energy
 
@@ -151,28 +153,47 @@ class HyperElasticity(Laplace):
     def compute_moduli(self):
         def moduli_map(point):
             inclusion = False
-            for i in range(args.units_x):
-                for j in range(args.units_y):
-                    for k in range(args.units_z):
+            for i in range(args.num_units_x):
+                for j in range(args.num_units_y):
+                    for k in range(args.num_units_z):
                         center = np.array([(i + 0.5)*args.L, (j + 0.5)*args.L, (k + 0.5)*args.L])
                         hit = np.max(np.absolute(point - center)) < args.L*args.ratio
                         inclusion = np.logical_or(inclusion, hit)
             E = np.where(inclusion, args.E_in, args.E_out)
             nu = np.where(inclusion, args.nu_in, args.nu_out)
-            return np.array([E, nu])
+            return E, nu
 
-        E, nu = jax.vmap(jax.vmap(moduli_map))(self.physical_quad_points).reshape(-1, 2).T
+        E, nu = jax.vmap(jax.vmap(moduli_map))(self.physical_quad_points)
+
+        if self.dns_info == 'in':
+            E = args.E_in*np.ones_like(E)
+            nu = args.nu_in*np.ones_like(nu)
+
+        if self.dns_info == 'out':
+            E = args.E_out*np.ones_like(E)
+            nu = args.nu_out*np.ones_like(nu)
+
         return E, nu
 
-
     def compute_traction(self, location_fn, sol):
-        """Not working.
+        """Not robust.
         """
         def traction_fn(u_grads):
-            # (num_selected_faces, num_face_quads, vec, dim) -> (num_selected_faces*num_face_quads, vec, dim)
-            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)
-            vmap_stress, _ = self.stress_strain_fns()
-            sigmas = vmap_stress(u_grads_reshape).reshape(u_grads.shape)
+            # u_grads: (num_selected_faces, num_face_quads, vec, dim) 
+            if self.mode == 'dns':
+                stress, _ = self.maps_dns()
+                if self.dns_info == 'in':
+                    vmap_stress = lambda x: jax.vmap(jax.vmap(stress))(x, args.E_in*np.ones(u_grads.shape[:2]), 
+                                                                       args.nu_in*np.ones(u_grads.shape[:2]))
+                else:
+                    vmap_stress = lambda x: jax.vmap(jax.vmap(stress))(x, args.E_out*np.ones(u_grads.shape[:2]), 
+                                                                       args.nu_out*np.ones(u_grads.shape[:2]))
+            elif self.mode == 'nn':
+                vmap_stress, _ = self.stress_strain_fns()
+            else:
+                raise NotImplementedError(f"traction_fn only support dns and nn.")
+
+            sigmas = jax.jit(vmap_stress)(u_grads)
             # TODO: a more general normals with shape (num_selected_faces, num_face_quads, dim, 1) should be supplied
             # (num_selected_faces, num_face_quads, vec, dim) @ (1, 1, dim, 1) -> (num_selected_faces, num_face_quads, vec, 1)
             normals = np.array([0., 0., 1.]).reshape((self.dim, 1))

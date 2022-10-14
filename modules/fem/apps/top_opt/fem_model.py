@@ -9,16 +9,16 @@ class Elasticity(Laplace):
     def __init__(self, name, mesh, linear_flag, dirichlet_bc_info=None, neumann_bc_info=None, source_info=None):
         self.name = name
         self.vec = 3
-        self.params = None
         super().__init__(mesh, dirichlet_bc_info, neumann_bc_info, source_info)
         self.neumann_boundary_inds = self.Neuman_boundary_conditions_inds(neumann_bc_info[0])[0]
         self.cell_centroids = onp.mean(onp.take(self.points, self.cells, axis=0), axis=1)
         self.flex_inds = np.arange(len(self.cells))
+        self.params = np.ones_like(self.flex_inds)
         if linear_flag:
             self.get_tensor_map = self.get_tensor_map_linearelasticity
         else:
             self.get_tensor_map = self.get_tensor_map_hyperelasticity
- 
+
     def get_tensor_map_linearelasticity(self):
         def stress(u_grad, theta):
             Emax = 70.e3

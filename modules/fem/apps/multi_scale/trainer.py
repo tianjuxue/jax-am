@@ -1,8 +1,8 @@
 import numpy as onp
 import jax
 import jax.numpy as np
-from jax.experimental import optimizers, stax
-from jax.experimental.stax import Dense, Relu, Sigmoid, Selu, Tanh, Softplus, Identity
+from jax.example_libraries import optimizers, stax
+from jax.example_libraries.stax import Dense, Relu, Sigmoid, Selu, Tanh, Softplus, Identity
 import time
 import os
 import pickle
@@ -16,6 +16,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+
 
 def H_to_C(H_flat):
     H = flat_to_tensor(H_flat)
@@ -39,10 +40,6 @@ def load_data():
     print(f"data_xy.shape = {data_xy.shape}")
     H = data_xy[:, :-1]
     energy_density = data_xy[:, -1:]/(args.L**3)
-
-    # print(np.sort(energy_density.reshape(-1)))
-    # exit()
-
     return H, energy_density
 
 
@@ -227,7 +224,7 @@ def train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam):
         return get_params(opt_state), opt_state, value
 
     train_val_losses = []
-    num_epochs = 10000
+    num_epochs = 20000
     for epoch in range(num_epochs):
         for batch_idx, (x, y) in enumerate(train_loader):
             params, opt_state, loss = update(params, np.array(x), np.array(y), opt_state)
@@ -240,7 +237,6 @@ def train_mlp_surrogate(train_data, train_loader, validation_data, hyperparam):
                           
     path_pickle = get_path_pickle(hyperparam)
     with open(path_pickle, 'wb') as handle:
-        # pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)  
         pickle.dump(params, handle)
 
     path_loss = get_path_loss(hyperparam)
@@ -255,15 +251,9 @@ def cross_validation():
     n_hiddens = [4, 8, 16]
     lrs = [1e-4, 1e-4, 1e-4]
 
-    # hyperparams = ['MLP3']
-    # width_hiddens = [128]
-    # n_hiddens = [16]
-    # lrs = [1./5.*1e-4]
-
     H, energy_density = load_data()
     data = transform_data(H, energy_density)
     train_data, validation_data, test_data, train_loader, validation_loader, test_loader = shuffle_data(data)
-
 
     compute = False
     for i in range(len(hyperparams)):
@@ -277,39 +267,20 @@ def cross_validation():
         val_scaled_MSE, val_scaled_true_vals, val_scaled_preds = evaluate_errors(validation_data, train_data, batch_forward)
         print(f"test scaled MSE = {test_scaled_MSE} for model {hyperparams[i]}")
         print(f"validation scaled MSE = {val_scaled_MSE} for model {hyperparams[i]}")
-
-        # show_train_curve(hyperparams[i])
-        # show_yy_plot(test_data, train_data, hyperparams[i])
+        show_yy_plot(test_data, train_data, hyperparams[i])
 
     show_train_curve_for_all(hyperparams)
 
 
-# def show_train_curve(hyperparam):
-#     path_loss = get_path_loss(hyperparam)
-#     train_smse, val_smse = onp.load(path_loss).T
-#     epoch = 100*np.arange(len(train_smse))
-#     fig = plt.figure(figsize=(8, 6)) 
-#     plt.plot(epoch, train_smse, '-', linewidth=2, color='blue', label='training')
-#     plt.plot(epoch, val_smse, '-', linewidth=2, color='red', label='validation')
-#     plt.xlabel('Epoch', fontsize=20)
-#     plt.ylabel('SMSE', fontsize=20)
-#     plt.tick_params(labelsize=18)
-#     plt.legend(fontsize=20, frameon=False)
-#     # plt.xscale('log')
-#     plt.yscale('log')
-#     root_pdf = get_root_pdf()
-#     plt.savefig(os.path.join(root_pdf, f"train_curve_{hyperparam}.pdf"), bbox_inches='tight')
-
-
 def show_train_curve_for_all(hyperparams):
     colors = ['blue', 'red', 'green']
-    fig = plt.figure(figsize=(8, 6)) 
+    fig = plt.figure(figsize=(12, 9)) 
     for i in range(len(hyperparams)):
         path_loss = get_path_loss(hyperparams[i])
         train_smse, val_smse = onp.load(path_loss).T
         epoch = 100*np.arange(len(train_smse))
-        plt.plot(epoch[:100], train_smse[:100], '-', linewidth=2, color=colors[i], label=f'training {hyperparams[i]}')
-        plt.plot(epoch[:100], val_smse[:100], '--', linewidth=2, color=colors[i], label=f'validation {hyperparams[i]}')
+        plt.plot(epoch, train_smse, '-', linewidth=2, color=colors[i], label=f'Training {hyperparams[i]}')
+        plt.plot(epoch, val_smse, '--', linewidth=2, color=colors[i], label=f'Validation {hyperparams[i]}')
         plt.xlabel('Epoch', fontsize=20)
         plt.ylabel('SMSE', fontsize=20)
         plt.tick_params(labelsize=18)
@@ -325,7 +296,7 @@ def show_yy_plot(partial_data, train_data, hyperparam):
     evaluate_errors(partial_data, train_data, batch_forward)
     y_pred = batch_forward(partial_data[:, :-1]).reshape(-1)
     y_true = partial_data[:, -1]
-    ref_vals = np.linspace(0., 80., 100)
+    ref_vals = np.linspace(0., 30., 100)
     fig = plt.figure() 
     plt.plot(ref_vals, ref_vals, '--', linewidth=2, color='black')
     plt.plot(y_true, y_pred, color='red', marker='o', markersize=4, linestyle='None')  

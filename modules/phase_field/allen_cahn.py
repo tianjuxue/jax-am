@@ -21,11 +21,11 @@ def phase_field(polycrystal):
 
         cosines = np.sum(unique_grain_directions[None, :, :, :] * edge_directions[:, None, :, :], axis=-1) \
                   / (np.linalg.norm(edge_directions, axis=-1)[:, None, :])
-        anlges = np.arccos(cosines) 
-        anlges = np.where(np.isfinite(anlges), anlges, 0.)
-        anlges = np.where(anlges < np.pi/2., anlges, np.pi - anlges)
-        anlges = np.min(anlges, axis=1)
-        anisotropy_term = 1. + args['anisotropy'] * (np.cos(anlges)**4 + np.sin(anlges)**4) # (num_edges, num_oris)
+        angles = np.arccos(cosines) 
+        angles = np.where(np.isfinite(angles), angles, 0.)
+        angles = np.where(angles < np.pi/2., angles, np.pi - angles)
+        angles = np.min(angles, axis=1)
+        anisotropy_term = 1. + args['anisotropy'] * (np.cos(angles)**4 + np.sin(angles)**4) # (num_edges, num_oris)
 
         anisotropy_term = anisotropy_term.reshape((edges.shape[0], edges.shape[1], edges.shape[2], args['num_oris']))
 

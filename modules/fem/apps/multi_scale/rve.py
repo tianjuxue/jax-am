@@ -202,6 +202,8 @@ def rve_problem(problem_name='rve'):
 
 
 def exp():
+    """Do not delete. We use this to generate RVE demo.
+    """
     problem = rve_problem('rve_debug')
     H_bar = np.array([[-0.009, 0., 0.],
                       [0., -0.009, 0.],
@@ -276,7 +278,7 @@ def generate_samples():
 
 def collect_data():
     problem = rve_problem()
-    date = f"09192022"
+    date = f"10102022"
     root_numpy = os.path.join(f"modules/fem/apps/multi_scale/data/numpy/training", date)
     if not os.path.exists(root_numpy):
         os.makedirs(root_numpy)
