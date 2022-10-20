@@ -125,11 +125,12 @@ class poisson_transient():
             source_fn = lambda *args : 0
         if nonlinear: 
             assert rho_fn != None, 'For nonlinear problem, please input rho_fn: rho = rho_fn(U)'
+            self.rho_fn = rho_fn
             fn = lambda U,U0,*args: -rho_fn(U)*(U-U0)/dt + source_fn(U,*args)
         else:
             assert np.isscalar(rho), 'For linear problem, a constant rho value is required'
             fn = lambda U,U0,*args: -rho*(U-U0)/dt + source_fn(U,*args)
-        
+            self.rho = rho
         self.step = poisson(mesh, nonlinear, miu, miu_fn, source_fn=fn)
 
 
@@ -239,7 +240,7 @@ class AM_3d():
         self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2],1))
 
         rho_cp = lambda T: params['cp'](T) * params['rho']
-        source = lambda T, conv: -rho_cp(T)*conv
+        source = lambda T, conv: -conv
         self.eqn_T = poisson_transient(mesh=params['mesh'],
                                        dt=params['dt'],
                                        nonlinear=True,
@@ -430,7 +431,7 @@ class AM_3d():
         self.p0 = self.p0.at[x0:x1,y0:y1,z0:z1].set(p)
         
         vel0_f = get_face_vels(self.vel0,self.msh.dX)
-        self.conv_T0 = div(self.T0[:,:,:,None],vel0_f,self.msh.dX)
+        self.conv_T0 = div(self.T0[:,:,:,None]*self.eqn_T.rho_fn(self.T0[:,:,:,None]),vel0_f,self.msh.dX)
     
         self.t += self.dt
 
