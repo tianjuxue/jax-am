@@ -517,7 +517,7 @@ class Laplace(FEM):
             return laplace_val + mass_val
 
         def D_fn(cell_sol, *args):
-            return jax.jacrev(kernel)(cell_sol, *args)
+            return jax.jacfwd(kernel)(cell_sol, *args)
 
         return kernel, D_fn
 

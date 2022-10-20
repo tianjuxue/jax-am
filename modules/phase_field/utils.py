@@ -32,7 +32,7 @@ class Field:
 
         mesh = meshio.read(f"{self.neper_folder}/domain.msh")
         points = mesh.points
-        cells =  mesh.cells_dict['hexahedron']
+        cells = mesh.cells_dict['hexahedron']
         cell_grain_inds = mesh.cell_data['gmsh:physical'][0] - 1
 
         onp.save(f"{self.pf_numpy_info_folder}/cell_grain_inds.npy", cell_grain_inds)
@@ -99,7 +99,6 @@ class Field:
         boundary_face_areas = onp.transpose(onp.stack(boundary_face_areas))
 
         # TODO: unique_oris_rgb and unique_grain_directions should be a class property, not an instance property
-
         self.mesh = mesh
         self.edges = edges
         self.ch_len = ch_len
@@ -303,6 +302,19 @@ def make_video():
     # -y means always overwrite
     os.system(f'ffmpeg -y -framerate 10 -i {self.data_path}/png/tmp/u.%04d.png -pix_fmt yuv420p -vf \
                "crop=trunc(iw/2)*2:trunc(ih/2)*2" {self.data_path}/mp4/test.mp4')
+
+
+def test_doc(a):
+    """Summary
+    
+    Args:
+        a (TYPE): Description
+    
+    Returns:
+        TYPE: Description
+    """
+    a=1
+    return b
 
 
 if __name__=="__main__":

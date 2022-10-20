@@ -24,6 +24,8 @@ def plot_results():
         plt.figure(figsize=(8, 6))
         # plt.plot(steps, data[i], linestyle='-', marker='o', markersize=10, linewidth=2, color='black')
         plt.plot(onp.arange(len(data[i])) + 1, data[i], linestyle='-', linewidth=2, color='black')
+        if cases[i] == 'freecad':
+            plt.plot(onp.arange(len(data[i])) + 1, 3.07*onp.ones_like(data[i]), linestyle='-', linewidth=2, color='red')
         plt.xlabel(r"Optimization step", fontsize=20)
         plt.ylabel(r"Compliance [$\mu$J]", fontsize=20)
         plt.tick_params(labelsize=20)
