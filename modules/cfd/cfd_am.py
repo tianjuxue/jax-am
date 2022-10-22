@@ -126,7 +126,7 @@ class poisson_transient():
         if nonlinear: 
             assert rho_fn != None, 'For nonlinear problem, please input rho_fn: rho = rho_fn(U)'
             self.rho_fn = rho_fn
-            fn = lambda U,U0,*args: -rho_fn(U)*(U-U0)/dt + source_fn(U,*args)
+            fn = lambda U,U0,*args: -(rho_fn(U)/2.+rho_fn(U0)/2.)*(U-U0)/dt + source_fn(U,*args)
         else:
             assert np.isscalar(rho), 'For linear problem, a constant rho value is required'
             fn = lambda U,U0,*args: -rho*(U-U0)/dt + source_fn(U,*args)
@@ -344,7 +344,7 @@ class AM_3d():
         self.eqn_T.step.msh.cell_conn = cell_conn
         self.update_engergy_BC(self.eqn_T.step, t)
 
-        T = solver_nonlinear(self.eqn_T.step, T0.flatten(), conv_T0.flatten()).reshape(self.shape)
+        T = solver_nonlinear(self.eqn_T.step, T0.flatten(), conv_T0.flatten(), init=T0.flatten()).reshape(self.shape)
         fl = self.fluid_frac(T)
 
         # for update vel BC
@@ -705,7 +705,7 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
 
 
 
-def solver_nonlinear(eqn,*args,tol=1e-5,max_it=5000):
+def solver_nonlinear(eqn,*args,init=None,tol=1e-5,max_it=5000):
 # solve nonlinear problems
 
     def cond_fun(carry):
@@ -721,7 +721,10 @@ def solver_nonlinear(eqn,*args,tol=1e-5,max_it=5000):
         dofs = dofs + inc
         return (dofs,inc,it+1)
     
-    dofs = np.zeros(eqn.ndof)
+    if init == None:
+        dofs = np.zeros(eqn.ndof)
+    else:
+        dofs = init
     it = 0
     inc = np.ones_like(dofs)
     dofs,inc,it = jax.lax.while_loop(cond_fun, body_fun, (dofs,inc,it))
