@@ -1,8 +1,8 @@
-post-processing
-reference
+*reference/
 *.DS_Store
-src/fem/tests/*/jax_fem/*
 *data/
+modules/fem/tests/*/jax_fem/*
+
 
 
 # Byte-compiled / optimized / DLL files
