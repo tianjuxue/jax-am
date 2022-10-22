@@ -58,8 +58,6 @@ Contents
 
    quick_start
    equations
-   pre-processing
-   post-processing
    gallery
    FAQ
    api

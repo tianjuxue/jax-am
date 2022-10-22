@@ -1,0 +1,72 @@
+###
+# Dimension
+dim: 3
+
+###
+# Number of orientations.
+num_oris: 3
+
+###
+# Number of grains.
+num_grains: 10000
+
+###
+# The height of the domain (z-direction domain size). Unit: [m]
+domain_z: 1.e-3
+
+###
+# The width of the domain (y-direction domain size). Unit: [m]
+domain_y: 1.e-5
+
+###
+# The length of the domain (y-direction domain size). Unit: [m]
+domain_x: 1.e-3
+
+###
+# Melting point. Unit: [K]
+T_melt: 1700.
+ 
+###
+# Ambient temperature. Unit: [K]
+T_ambient: 300.
+
+###
+# Gas constant. Unit: [J/(Mol*K)]
+gas_const: 8.3
+  
+###
+# Qg (phase-field parameter). Unit: [J/Mol]
+Qg: 1.4e+5
+   
+###
+# L0 (phase-field parameter). Unit: [m^3/(J*s)]
+L0: 3.5e+3
+
+###
+# kappa_g (phase-field parameter). Unit: [J/m]
+kappa_g: 2.77e-6
+ 
+###
+# m_g (phase-field parameter). Unit: [J/m^3]
+m_g: 2.4e+5
+ 
+###
+# anisotropy (phase-field parameter). Unit: []
+anisotropy: 0.
+ 
+###
+# An ad-hoc parameter (phase-field parameter). Unit: []
+ad_hoc: 1.
+
+###
+# Output solution steps.
+write_sol_interval: 5000
+ 
+###
+# Check solution steps.
+check_sol_interval: 20
+
+###
+# The time step for integration. Unit: [s]
+dt: 2.e-7
+

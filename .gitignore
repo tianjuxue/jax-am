@@ -1,4 +1,4 @@
-reference
+*reference/
 *.DS_Store
 *data/
 modules/fem/tests/*/jax_fem/*

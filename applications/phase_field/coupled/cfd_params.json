@@ -1,0 +1,23 @@
+{
+    "rho": 8440,
+    "visco": 7e-3,
+    "Marangoni": -2e-5,
+    "dt": 2e-7,
+    "t_OFF": 0.0024,
+    "speed": 0.25,
+    "X0": [2e-4, 1e-4],    
+    "rb": 5e-5,
+    "eta": 0.43,
+    "P": 195,
+    "T_ref": 300,
+    "Ts": 1563,
+    "Tl": 1623,
+    "write_sol_interval": 500,
+    "laser_path":
+    {
+        "time": [0, 0.0024],
+        "x_pos": [0.2e-3, 0.8e-3],
+        "y_pos": [0.1e-3, 0.1e-3],
+        "switch": [1, 0]
+    }
+}
