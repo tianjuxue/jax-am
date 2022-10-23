@@ -5,6 +5,8 @@ import scipy
 from jax.experimental.sparse import BCOO
 from functools import partial
 import os
+import time
+import glob
 
 
 class poisson():
@@ -229,16 +231,19 @@ def get_face_vels(vel, dX, BCs=None):
 class AM_3d():
     def __init__(self, params):
         self.params = params
+        self.meshio_mesh = params['meshio_mesh']
         self.msh = params['mesh']
         self.msh_v = params['mesh_local']
         self.shape = params['mesh'].shape
+
+        self.clean_sols()
 
         self.t = 0.
         self.dt = params['dt']
         self.T0 = np.zeros(self.shape) + params['T_ref']
         self.conv_T0 = np.zeros(self.shape)
-        self.vel0 = np.zeros((self.shape[0],self.shape[1],self.shape[2],3))
-        self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2],1))
+        self.vel0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 3))
+        self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 1))
 
         rho_cp = lambda T: params['cp'](T) * params['rho']
         source = lambda T, conv: -conv
@@ -443,14 +448,20 @@ class AM_3d():
         for f in files_vtk:
             os.remove(f)
 
-    def write_sols(self, step):
-        print(f"Write sols to file...To be implemented")
-        # Solve the CFD solution to local...
-        # To be implemented...
-        # step = step // args['write_sol_interval']
-        # polycrystal.mesh.cell_data['T'] = [onp.array(T, dtype=onp.float32)]
-        # polycrystal.mesh.write(os.path.join(self.params['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
+    def inspect_sol(self, step, num_steps):
+        print(f"\nstep {step} of {num_steps}, unix timestamp = {time.time()}")
+        print(f"T_max:{self.T0.max()}, vmax:{np.linalg.norm(self.vel0,axis=3).max()}")
+        if not np.all(np.isfinite(self.T0)):          
+            raise ValueError(f"Found np.inf or np.nan in T0 - stop the program")
 
+    def write_sols(self, step):
+        print(f"\nWrite CFD sols to file...")
+        step = step // self.params['write_sol_interval']
+        self.meshio_mesh.cell_data['T'] = [onp.array(self.T0.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel0.reshape(-1, 3), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['p'] = [onp.array(self.p0.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.write(os.path.join(self.params['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
+       
 
 class uniform_mesh():
     def __init__(self, domain, N):
@@ -623,11 +634,11 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
         preconditoner = None
     b = -res
 
+    # TODO(Tianju): Any way to detect if CG does not converge? The program can get stuck.
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, M=preconditoner, x0=None, tol=tol,maxiter=10000) # bicgstab
     dofs =  dofs + inc
     
     return dofs
-
 
 
 def solver_nonlinear(eqn,*args,tol=1e-5,max_it=5000):

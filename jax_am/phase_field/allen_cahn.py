@@ -135,6 +135,7 @@ class PFSolver:
         self.polycrystal = polycrystal
         self.state_rhs = phase_field(self.polycrystal, self.pf_args)
         self.force_eta_fn = get_force_eta_fn(self.pf_args)
+        self.clean_sols()
 
     def stepper(self, state_pre, t_crt, ode_params):
         T, = ode_params
@@ -167,7 +168,7 @@ class PFSolver:
         While running simulations, print out some useful information.
         '''
         # print(np.hstack((T[:100, :], pf_sol[:100, :10])))
-        print(f"step {step} of {len(ts[1:])}, unix timestamp = {time.time()}")
+        print(f"\nstep {step} of {len(ts[1:])}, unix timestamp = {time.time()}")
         eta0 = np.argmax(pf_sol0, axis=1)
         eta = np.argmax(pf_sol, axis=1)
         change_eta = np.where(eta0 == eta, 0, 1)
@@ -180,7 +181,7 @@ class PFSolver:
             raise ValueError(f"Found np.inf or np.nan in pf_sol - stop the program")
 
     def write_sols(self, pf_sol, T, step):
-        print(f"Write sols to file...")
+        print(f"\nWrite phase-field sols to file...")
         step = step // self.pf_args['write_sol_interval']
 
         liquid = T.reshape(-1) > self.pf_args['T_melt']

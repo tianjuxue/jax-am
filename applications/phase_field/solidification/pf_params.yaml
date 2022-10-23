@@ -52,7 +52,7 @@ m_g: 2.4e+5
  
 ###
 # anisotropy (phase-field parameter). Unit: []
-anisotropy: 0.
+anisotropy: 0.15
  
 ###
 # An ad-hoc parameter (phase-field parameter). Unit: []
@@ -69,4 +69,8 @@ check_sol_interval: 20
 ###
 # The time step for integration. Unit: [s]
 dt: 2.e-7
+
+###
+# The time step for integration. Unit: [s]
+t_OFF: 0.005
 

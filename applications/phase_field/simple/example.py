@@ -42,7 +42,6 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
-    pf_args['t_OFF'] = 0.0024
 
     # pf_args['ad_hoc'] = 0.1
 

@@ -65,8 +65,6 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
-    pf_args['anisotropy'] = 0.15
-
     generate_neper = False
     if generate_neper:
         pre_processing(pf_args)
@@ -75,8 +73,7 @@ def integrator():
     polycrystal = Field(pf_args, ori2)
     pf_solver = PFSolver(pf_args, polycrystal)
     pf_sol0 = pf_solver.ini_cond()
-    EPS = 1e-10
-    ts = np.arange(0., 0.0050 + EPS, pf_args['dt'])
+    ts = np.arange(0., pf_args['t_OFF'] + 1e-10, pf_args['dt'])
     pf_solver.clean_sols()
     pf_state = (pf_sol0, ts[0])
     T_quench_fn = get_T_fn(polycrystal, pf_args)

@@ -70,3 +70,7 @@ check_sol_interval: 20
 # The time step for integration. Unit: [s]
 dt: 2.e-7
 
+###
+# The time step for integration. Unit: [s]
+t_OFF: 0.0024
+

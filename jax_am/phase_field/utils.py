@@ -48,8 +48,6 @@ class Field:
         self.pf_args['Ny'] = Ny
         self.pf_args['Nz'] = Nz
         print(f"Nx = {Nx}, Ny = {Ny}, Nz = {Nz}")
-        print(f"Total num of grains = {self.pf_args['num_grains']}")
-        print(f"Total num of orientations = {self.pf_args['num_oris']}")
         print(f"Total num of finite difference cells = {len(cells)}")
 
         cell_points = onp.take(points, cells, axis=0)
