@@ -33,6 +33,7 @@ if __name__=='__main__':
             "meshio",
             "gmsh",
             "pyfiglet",
+            "scikit-learn",
         ],
         url="https://github.com/tianjuxue/jax-am",
         license="GPL-3.0",

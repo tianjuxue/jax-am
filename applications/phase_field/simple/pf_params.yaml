@@ -24,7 +24,7 @@ domain_x: 1.e-3
 
 ###
 # Liquidus temperature. Unit: [K]
-T_melt: 1623
+T_liquidus: 1623
  
 ###
 # Ambient temperature. Unit: [K]

@@ -11,7 +11,7 @@ from jax_am.cfd.cfd_am import mesh3d, AM_3d
 from jax_am.cfd.json_parser import cfd_parse
 from jax_am.cfd.generate_mesh import box_mesh
 
-from jax_am.phase_field.utils import Field, walltime, read_path
+from jax_am.phase_field.utils import Field, walltime
 from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
@@ -25,10 +25,14 @@ jax.config.update("jax_enable_x64", True)
 def coupled_integrator():
     """One-way coupling of CFD solver and PF solver.
     Namely, PF solver consumes temperature field produced by CFD solver in each time step.
+
+    TODO: 
+    (1) Multi-scan tool path
+    (2) Spatial interpolation
     """
     @jax.jit
     def convert_temperature(T_cfd):
-        """CFD temperature is (Nx, Ny, Nz), but PF temperature needs (Nz, Ny, Nz)
+        """CFD temperature is (Nx, Ny, Nz), but PF temperature needs (Nz, Ny, Nx)
         """
         T_pf = np.transpose(T_cfd, axes=(2, 1, 0)).reshape(-1, 1)
         return T_pf

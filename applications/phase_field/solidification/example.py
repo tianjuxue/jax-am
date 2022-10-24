@@ -9,7 +9,7 @@ from functools import partial
 from orix.quaternion import Orientation
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.phase_field.utils import Field, walltime, read_path
+from jax_am.phase_field.utils import Field, walltime
 from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
@@ -29,7 +29,7 @@ def get_T_fn(polycrystal, pf_args):
         thermal_grad = 5.e5
         cooling_rate = thermal_grad * vel
         t_total = pf_args['domain_z'] / vel
-        T = pf_args['T_melt'] + thermal_grad * z - cooling_rate * t
+        T = pf_args['T_liquidus'] + thermal_grad * z - cooling_rate * t
         return T[:, None]
     return jax.jit(get_T_quench)
 
