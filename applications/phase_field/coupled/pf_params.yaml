@@ -23,8 +23,8 @@ domain_y: 2.e-4
 domain_x: 1.e-3
 
 ###
-# Melting point. Unit: [K]
-T_melt: 1600.
+# Liquidus temperature. Unit: [K]
+T_melt: 1623
  
 ###
 # Ambient temperature. Unit: [K]
