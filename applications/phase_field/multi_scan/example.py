@@ -23,8 +23,9 @@ onp.set_printoptions(precision=10)
 
 def set_params():
     crt_file_path = os.path.dirname(__file__)
-    data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
+    pf_args['case'] = "example"
+    data_dir = os.path.join(crt_file_path, 'data', pf_args['case'])
     pf_args['data_dir'] = data_dir
     return pf_args
 
@@ -116,7 +117,7 @@ def post_processing():
 
  
 if __name__=="__main__":
-    generate_neper()
+    # generate_neper()
     integrator()
     post_processing()
 
