@@ -15,7 +15,7 @@ from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 onp.set_printoptions(threshold=sys.maxsize, linewidth=1000, suppress=True)
 onp.set_printoptions(precision=10)
@@ -43,6 +43,7 @@ def get_T_fn(polycrystal, pf_args):
         R = np.sqrt(X**2 + Y**2 + Z**2)
         projection = X*unit_mov_dir[0] + Y*unit_mov_dir[1] + Z*unit_mov_dir[2]
         T = pf_args['T_ambient'] + Q / (2 * np.pi * kappa) / R * np.exp(-pf_args['vel'] / (2*alpha) * (R + projection))
+        T = np.where(T > 2000., 2000., T)
         return T[:, None]
     return jax.jit(get_T_laser)
 
@@ -81,14 +82,12 @@ def read_path(pf_args):
     # print(combined)
     return ts, xs, ys, zs, ps, mov_dir
 
+def generate_neper():
+    pf_args = set_params()
+    pre_processing(pf_args)
 
 def integrator():
     pf_args = set_params()
-
-    generate_neper = False
-    if generate_neper:
-        pre_processing(pf_args)
-
     polycrystal = Field(pf_args)
     pf_solver = PFSolver(pf_args, polycrystal)
     pf_sol0 = pf_solver.ini_cond()
@@ -117,6 +116,7 @@ def post_processing():
 
  
 if __name__=="__main__":
-    # integrator()
+    generate_neper()
+    integrator()
     post_processing()
 
