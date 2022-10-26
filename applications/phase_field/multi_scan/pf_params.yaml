@@ -1,4 +1,7 @@
 ###
+# Identifier (used as seed of the random number generator to compute initial seed positions in Neper teselllation)
+id: 1
+
 # Dimension
 dim: 3
 
@@ -8,24 +11,24 @@ num_oris: 20
 
 ###
 # Number of grains.
-num_grains: 8000
+num_grains: 24000
 
 ###
 # The height of the domain (z-direction domain size). Unit: [m]
-domain_z: 5.e-5
+domain_z: 0.1e-3
 
 ###
 # The width of the domain (y-direction domain size). Unit: [m]
-domain_y: 4.e-4
+domain_y: 0.24e-3
 
 ###
-# The length of the domain (y-direction domain size). Unit: [m]
-domain_x: 4.e-4
+# The length of the domain (x-direction domain size). Unit: [m]
+domain_x: 1.e-3
 
 ###
 # Liquidus temperature. Unit: [K]
 T_liquidus: 1623
- 
+
 ###
 # Ambient temperature. Unit: [K]
 T_ambient: 300.
@@ -33,11 +36,11 @@ T_ambient: 300.
 ###
 # Gas constant. Unit: [J/(Mol*K)]
 gas_const: 8.3
-  
+
 ###
 # Qg (phase-field parameter). Unit: [J/Mol]
 Qg: 1.4e+5
-   
+
 ###
 # L0 (phase-field parameter). Unit: [m^3/(J*s)]
 L0: 3.5e+3
@@ -45,23 +48,23 @@ L0: 3.5e+3
 ###
 # kappa_g (phase-field parameter). Unit: [J/m]
 kappa_g: 2.77e-6
- 
+
 ###
 # m_g (phase-field parameter). Unit: [J/m^3]
 m_g: 2.4e+5
- 
+
 ###
 # anisotropy (phase-field parameter). Unit: []
 anisotropy: 0.
- 
+
 ###
 # An ad-hoc parameter (phase-field parameter). Unit: []
 ad_hoc: 1.
 
 ###
 # Output solution steps.
-write_sol_interval: 1000
- 
+write_sol_interval: 500
+
 ###
 # Check solution steps.
 check_sol_interval: 20
@@ -75,11 +78,11 @@ dt: 2.e-7
 vel: 0.25
 
 ###
-# Laser toolpath. 
+# Laser toolpath.
 # Unit for time: [s]
 # Unit for x_pos and y_pos: [m]
 laser_path:
-  x_pos: [1.e-4, 1.e-4, 3.e-4, 1.e-4]
-  y_pos: [1.e-4, 3.e-4, 3.e-4, 1.e-4]
-  z_pos: [5.e-5, 5.e-5, 5.e-5, 5.e-5]
+  x_pos: [0.1e-3, 0.9e-3, 0.9e-3, 0.1e-3]
+  y_pos: [0.17e-3, 0.17e-3, 0.07e-3, 0.07e-3]
+  z_pos: [0.1e-3, 0.1e-3, 0.1e-3, 0.1e-3]
   switch: [1, 1, 1, 0]
