@@ -2,15 +2,17 @@
     "rho": 8440,
     "visco": 7e-3,
     "Marangoni": -2e-5,
-    "dt": 2e-7,
+    "dt": 1e-6,
     "t_OFF": 0.0024,
-    "speed": 0.25,
+    "speed": 0.5,
     "X0": [2e-4, 1e-4],    
     "rb": 5e-5,
     "eta": 0.43,
-    "P": 195,
+    "P": 100,
     "T_ref": 300,
     "Ts": 1563,
-    "Tl": 1623
+    "Tl": 1623,
+    "write_sol_interval": 20,
+    "check_sol_interval": 5
 }
 

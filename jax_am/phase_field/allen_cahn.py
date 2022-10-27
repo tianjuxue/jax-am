@@ -40,7 +40,7 @@ def phase_field(polycrystal, pf_args):
         eta = state
         T, = ode_params
         T = np.where(T > 2000., 2000., T)
-        zeta = 0.5 * (1 - np.tanh(1e10*(T/pf_args['T_melt'] - 1)))
+        zeta = 0.5 * (1 - np.tanh(1e10*(T/pf_args['T_liquidus'] - 1)))
         local_energy_grad = local_energy_grad_fn(eta, zeta) / pf_args['ad_hoc']
 
         eta_xyz = np.reshape(eta, (pf_args['Nz'], pf_args['Ny'], pf_args['Nx'], pf_args['num_oris']))
@@ -118,12 +118,13 @@ def explicit_euler(state_pre, t_crt, f, ode_params):
 
 def get_force_eta_fn(pf_args):
     def force_eta_zero_in_liquid(state, T):
-        '''
-        In liquid zone, set all eta to be zero.
-        '''
+        """In liquid zone, set all eta to be zero.
+        This function may not be necessary.
+        """
         eta, t = state
+        # This shift_val is very ad-hoc
         shift_val = 1.
-        liquid = T > pf_args['T_melt'] + shift_val
+        liquid = T > pf_args['T_liquidus'] + shift_val
         eta = np.where(liquid, 0., eta)
         return (eta, state[1])
     return jax.jit(force_eta_zero_in_liquid)
@@ -135,6 +136,7 @@ class PFSolver:
         self.polycrystal = polycrystal
         self.state_rhs = phase_field(self.polycrystal, self.pf_args)
         self.force_eta_fn = get_force_eta_fn(self.pf_args)
+        self.clean_sols()
 
     def stepper(self, state_pre, t_crt, ode_params):
         T, = ode_params
@@ -167,23 +169,23 @@ class PFSolver:
         While running simulations, print out some useful information.
         '''
         # print(np.hstack((T[:100, :], pf_sol[:100, :10])))
-        print(f"step {step} of {len(ts[1:])}, unix timestamp = {time.time()}")
+        print(f"\nstep {step} of {len(ts[1:])}, unix timestamp = {time.time()}")
         eta0 = np.argmax(pf_sol0, axis=1)
         eta = np.argmax(pf_sol, axis=1)
         change_eta = np.where(eta0 == eta, 0, 1)
-        change_T = np.where(T >= self.pf_args['T_melt'], 1, 0)
+        change_T = np.where(T >= self.pf_args['T_liquidus'], 1, 0)
         print(f"percent of change of orientations = {np.sum(change_eta)/len(change_eta)*100}%")
-        print(f"percet of T >= T_melt = {np.sum(change_T)/len(change_T)*100}%")
+        print(f"percet of T >= T_liquidus = {np.sum(change_T)/len(change_T)*100}%")
         print(f"max T = {np.max(T)}")
  
         if not np.all(np.isfinite(pf_sol)):          
             raise ValueError(f"Found np.inf or np.nan in pf_sol - stop the program")
 
     def write_sols(self, pf_sol, T, step):
-        print(f"Write sols to file...")
+        print(f"\nWrite phase-field sols to file...")
         step = step // self.pf_args['write_sol_interval']
 
-        liquid = T.reshape(-1) > self.pf_args['T_melt']
+        liquid = T.reshape(-1) > self.pf_args['T_liquidus']
         eta = pf_sol
         eta_max = onp.max(eta, axis=1)
         cell_ori_inds = onp.argmax(eta, axis=1)

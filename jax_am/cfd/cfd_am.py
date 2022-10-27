@@ -5,6 +5,9 @@ import scipy
 from jax.experimental.sparse import BCOO
 from functools import partial
 import os
+import time
+import glob
+jax.config.update("jax_enable_x64", True)
 
 
 class poisson():
@@ -229,16 +232,20 @@ def get_face_vels(vel, dX, BCs=None):
 class AM_3d():
     def __init__(self, params):
         self.params = params
+        self.meshio_mesh = params['meshio_mesh']
         self.msh = params['mesh']
         self.msh_v = params['mesh_local']
         self.shape = params['mesh'].shape
+
+        self.clean_sols()
 
         self.t = 0.
         self.dt = params['dt']
         self.T0 = np.zeros(self.shape) + params['T_ref']
         self.conv_T0 = np.zeros(self.shape)
-        self.vel0 = np.zeros((self.shape[0],self.shape[1],self.shape[2],3))
-        self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2],1))
+        self.vel0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 3))
+        self.conv0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 3))
+        self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 1))
 
         rho_cp = lambda T: params['cp'](T) * params['rho']
         source = lambda T, conv: -conv
@@ -356,18 +363,10 @@ class AM_3d():
         return T, fl, T_top
 
     @partial(jax.jit, static_argnums=0)
-    def update_velosity(self, vel0, p0, fl, T0_top, cell_conn):
+    def update_velosity(self, vel0, p0, conv0, fl, T0_top, cell_conn):
         # for better JIT time, very ugly, to be modified
         self.eqn_v.step.msh.cell_conn = cell_conn
 
-        vel0_gc = get_GC_values(vel0, [self.vel_bc_type, self.vel_bc_values],
-                                self.msh_v.dX)
-        vel0_f = get_face_vels(vel0, self.msh_v.dX,
-                               [self.vel_bc_type, self.vel_bc_values])
-        conv0 = div(vel0,
-                    vel0_f,
-                    self.msh_v.dX,
-                    BCs=[self.vel_bc_type, self.vel_bc_values])
         grad_p0 = gradient(p0, self.msh_v.dX)
 
         # update vel BC
@@ -383,7 +382,7 @@ class AM_3d():
                               conv0[:, :, :, i].flatten(),
                               fl.flatten(),
                               grad_p0[:, :, :, i].flatten(),
-                              tol=1e-6))
+                              tol=1e-10))
 
         vel = np.stack((vel[0].reshape(self.msh_v.shape), vel[1].reshape(
             self.msh_v.shape), vel[2].reshape(self.msh_v.shape)),
@@ -398,15 +397,23 @@ class AM_3d():
                    self.msh_v.dX[2]) / self.dt * self.params['rho']
         p = solver_linear(self.poisson_for_p,
                           div_vel.flatten(),
-                          tol=1e-6,
+                          tol=1e-10,
                           update=True)
         p = p.reshape(self.msh_v.shape[0], self.msh_v.shape[1],
                       self.msh_v.shape[2], 1)
 
+
+        vel_gc = get_GC_values(vel, [self.vel_bc_type, self.vel_bc_values],
+                                self.msh_v.dX)
+        vel_f = get_face_vels(vel, self.msh_v.dX,
+                               [self.vel_bc_type, self.vel_bc_values])
+
         # correction step
         vel = vel - self.dt * gradient(p, self.msh.dX) / self.params['rho']
         p += p0
-        return vel, p
+        conv = div(vel,vel_f,self.msh_v.dX,BCs=[self.vel_bc_type, self.vel_bc_values])
+
+        return vel, p, conv
     
     def time_integration(self):
         self.T0, fl, T0_top = self.update_tempearture(self.t, self.T0,self.conv_T0,
@@ -422,17 +429,20 @@ class AM_3d():
         z0 = self.msh.shape[2] - self.msh_v.shape[2]
         z1 = self.msh.shape[2]
         
-        vel_local, p  = self.update_velosity(self.vel0[x0:x1,y0:y1,z0:z1], 
+        vel_local, p, conv  = self.update_velosity(self.vel0[x0:x1,y0:y1,z0:z1], 
                                                 self.p0[x0:x1,y0:y1,z0:z1],
+                                                self.conv0[x0:x1,y0:y1,z0:z1],
                                                 fl[x0:x1,y0:y1,z0:z1], 
                                                 T0_top[x0:x1,y0:y1, None],
                                                 self.cell_conn_local)
+
     
         self.vel0 = self.vel0.at[x0:x1,y0:y1,z0:z1].set(vel_local)
         self.p0 = self.p0.at[x0:x1,y0:y1,z0:z1].set(p)
+        self.conv0 = self.conv0.at[x0:x1,y0:y1,z0:z1].set(conv)
         
         vel0_f = get_face_vels(self.vel0,self.msh.dX)
-        self.conv_T0 = div(self.T0[:,:,:,None]*self.eqn_T.rho_fn(self.T0[:,:,:,None]),vel0_f,self.msh.dX)
+        self.conv_T0 = div(self.T0[:,:,:,None]*self.eqn_T.rho_fn(self.T0[:,:,:,None]),vel0_f,self.msh.dX)[:,:,:,0]
     
         self.t += self.dt
 
@@ -443,14 +453,20 @@ class AM_3d():
         for f in files_vtk:
             os.remove(f)
 
-    def write_sols(self, step):
-        print(f"Write sols to file...To be implemented")
-        # Solve the CFD solution to local...
-        # To be implemented...
-        # step = step // args['write_sol_interval']
-        # polycrystal.mesh.cell_data['T'] = [onp.array(T, dtype=onp.float32)]
-        # polycrystal.mesh.write(os.path.join(self.params['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
+    def inspect_sol(self, step, num_steps):
+        print(f"\nstep {step} of {num_steps}, unix timestamp = {time.time()}")
+        print(f"T_max:{self.T0.max()}, vmax:{np.linalg.norm(self.vel0,axis=3).max()}")
+        if not np.all(np.isfinite(self.T0)):          
+            raise ValueError(f"Found np.inf or np.nan in T0 - stop the program")
 
+    def write_sols(self, step):
+        print(f"\nWrite CFD sols to file...")
+        step = step // self.params['write_sol_interval']
+        self.meshio_mesh.cell_data['T'] = [onp.array(self.T0.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel0.reshape(-1, 3), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['p'] = [onp.array(self.p0.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.write(os.path.join(self.params['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
+       
 
 class uniform_mesh():
     def __init__(self, domain, N):
@@ -623,11 +639,11 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
         preconditoner = None
     b = -res
 
+    # TODO(Tianju): Any way to detect if CG does not converge? The program can get stuck.
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, M=preconditoner, x0=None, tol=tol,maxiter=10000) # bicgstab
     dofs =  dofs + inc
     
     return dofs
-
 
 
 def solver_nonlinear(eqn,*args,init=None,tol=1e-5,max_it=5000):

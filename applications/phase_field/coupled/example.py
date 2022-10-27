@@ -9,7 +9,9 @@ from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
 from jax_am.cfd.json_parser import cfd_parse
-from jax_am.phase_field.utils import Field, walltime, read_path
+from jax_am.cfd.generate_mesh import box_mesh
+
+from jax_am.phase_field.utils import Field, walltime
 from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
@@ -23,12 +25,23 @@ jax.config.update("jax_enable_x64", True)
 def coupled_integrator():
     """One-way coupling of CFD solver and PF solver.
     Namely, PF solver consumes temperature field produced by CFD solver in each time step.
+
+    TODO: 
+    (1) Multi-scan tool path
+    (2) Spatial interpolation
     """
+    @jax.jit
     def convert_temperature(T_cfd):
-        """CFD temperature is (Nx, Ny, Nz), but PF temperature needs (Nz, Ny, Nz)
+        """CFD temperature is (Nx, Ny, Nz), but PF temperature needs (Nz, Ny, Nx)
         """
         T_pf = np.transpose(T_cfd, axes=(2, 1, 0)).reshape(-1, 1)
         return T_pf
+
+    @jax.jit
+    def interpolate_T(T_past, T_future, t_pf, t_cfd):
+        ratio = (t_cfd - t_pf)/cfd_args['dt']
+        T = ratio*T_past + (1 - ratio)*T_future
+        return T
 
     crt_file_path = os.path.dirname(__file__)
     data_dir = os.path.join(crt_file_path, 'data')
@@ -42,10 +55,11 @@ def coupled_integrator():
     polycrystal = Field(pf_args)
 
     mesh = mesh3d([pf_args['domain_x'], pf_args['domain_y'], pf_args['domain_z']], 
-                  [pf_args['Nx'], pf_args['Ny'],pf_args['Nz']])
+                  [pf_args['Nx'], pf_args['Ny'], pf_args['Nz']])
     # mesh_local = mesh
     mesh_local = mesh3d([0.75*pf_args['domain_x'], 0.5*pf_args['domain_y'], 0.4*pf_args['domain_z']], 
                         [round(0.75*pf_args['Nx']), round(0.5*pf_args['Ny']), round(0.4*pf_args['Nz'])])
+    meshio_mesh = box_mesh(pf_args['Nx'], pf_args['Ny'], pf_args['Nz'], pf_args['domain_x'], pf_args['domain_y'], pf_args['domain_z'])
 
     cfd_args = cfd_parse(os.path.join(crt_file_path, 'cfd_params.json'))
     cfd_args['mesh'] = mesh
@@ -53,40 +67,52 @@ def coupled_integrator():
     cfd_args['cp'] = lambda T: (0.2441*np.clip(T,300,1563)+338.39) 
     cfd_args['k'] = lambda T: 0.0163105*np.clip(T,300,1563)+4.5847
     cfd_args['data_dir'] = data_dir
+    cfd_args['meshio_mesh'] = meshio_mesh
+    assert cfd_args['dt'] >= pf_args['dt'], f"CFD time step must be greater than PF for intepolation"
 
     pf_solver = PFSolver(pf_args, polycrystal)
     pf_sol0 = pf_solver.ini_cond()
+    pf_ts = np.arange(0., pf_args['t_OFF'] + 1e-10, pf_args['dt'])
+    t_pf = pf_ts[0]
+    pf_state = (pf_sol0, t_pf)
 
     cfd_solver = AM_3d(cfd_args)
-    
-    ts = np.arange(0., cfd_args['laser_path']['time'][-1], cfd_args['dt'])
+    cfd_ts = np.arange(0., cfd_args['t_OFF'] + 1e-10, cfd_args['dt'])
+    cfd_step = 0
+    cfd_solver.write_sols(cfd_step)    
+    T_past = cfd_solver.T0
+    walltime()(cfd_solver.time_integration)()
 
-    pf_solver.clean_sols()
+    T_future = cfd_solver.T0
+    t_cfd = cfd_args['dt']
+    cfd_step += 1
 
-    pf_state = (pf_sol0, ts[0])
+    T_pf = convert_temperature(interpolate_T(T_past, T_future, t_pf, t_cfd))
+    pf_solver.write_sols(pf_sol0, T_pf, 0)
 
-    T0 = convert_temperature(cfd_solver.T0)
-    pf_params = [T0]
- 
-    pf_solver.write_sols(pf_sol0, T0, 0)
-    for (i, t_crt) in enumerate(ts[1:]):
+    for (i, t_pf) in enumerate(pf_ts[1:]):
+        # Assume that t_cfd < t_pf <= t_cfd + cfd_args['dt']
+        if t_pf > t_cfd + cfd_args['dt']:
+            walltime()(cfd_solver.time_integration)()
+            T_past = T_future
+            T_future = cfd_solver.T0
+            t_cfd += cfd_args['dt']
+            cfd_step += 1
+            if cfd_step % cfd_args['check_sol_interval'] == 0:
+                cfd_solver.inspect_sol(cfd_step, len(cfd_ts[1:]))
 
-        pf_state, pf_sol = walltime()(pf_solver.stepper)(pf_state, t_crt, pf_params)
-        walltime()(cfd_solver.time_integration)()
+            if cfd_step % cfd_args['write_sol_interval'] == 0:
+                cfd_solver.write_sols(cfd_step)
 
-        T = convert_temperature(cfd_solver.T0)
-        pf_params = [T]
-
+        T_pf = convert_temperature(interpolate_T(T_past, T_future, t_pf, t_cfd))
+        pf_state, pf_sol = walltime()(pf_solver.stepper)(pf_state, t_pf, [T_pf])
+        
         if (i + 1) % pf_args['check_sol_interval'] == 0:
-            pf_solver.inspect_sol(pf_sol, pf_sol0, T, ts, i + 1)
+            pf_solver.inspect_sol(pf_sol, pf_sol0, T_pf, pf_ts, i + 1)
 
         if (i + 1) % pf_args['write_sol_interval'] == 0:
-            pf_solver.write_sols(pf_sol, T, i + 1)
+            pf_solver.write_sols(pf_sol, convert_temperature(T_future), i + 1)
 
-        if (i + 1) % cfd_args['write_sol_interval'] == 0:
-            print(f'T_max:{cfd_solver.T0.max()},vmax:{np.linalg.norm(cfd_solver.vel0,axis=3).max()}')
-            # cfd_solver.write_sols(i + 1)
-            
 
 if __name__=="__main__":
     coupled_integrator()

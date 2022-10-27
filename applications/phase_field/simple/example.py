@@ -8,7 +8,7 @@ import glob
 from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.phase_field.utils import Field, walltime, read_path
+from jax_am.phase_field.utils import Field, walltime
 from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
@@ -19,9 +19,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def get_T_fn(polycrystal, pf_args):
     def get_T_laser(t):
-        '''
-        Analytic T from https://doi.org/10.1016/j.actamat.2021.116862
-        '''
+        """Analytic T from https://doi.org/10.1016/j.actamat.2021.116862
+        """
         centroids = polycrystal.centroids
         Q = 25
         alpha = 5.2e-6
@@ -42,9 +41,6 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
-    pf_args['t_OFF'] = 0.0024
-
-    # pf_args['ad_hoc'] = 0.1
 
     generate_neper = False
     if generate_neper:
@@ -70,12 +66,6 @@ def integrator():
             pf_solver.inspect_sol(pf_sol, pf_sol0, T, ts, i + 1)
         if (i + 1) % pf_args['write_sol_interval'] == 0:
             pf_solver.write_sols(pf_sol, T, i + 1)
-
-
-def post_processing():
-    set_params()
-    polycrystal = Field(pf_args)
-    cell_ori_inds_3D = polycrystal.convert_to_3D_images()
 
 
 if __name__=="__main__":

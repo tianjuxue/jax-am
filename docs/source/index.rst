@@ -63,7 +63,6 @@ Contents
    api
    about
    tutorial
-   template
 
 Indices and tables
 ==================

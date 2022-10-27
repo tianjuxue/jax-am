@@ -11,6 +11,7 @@ from orix import plot
 from orix.quaternion import Orientation, symmetry
 from orix.vector import Vector3d
 from scipy.spatial.transform import Rotation as R
+from sklearn.decomposition import PCA
 
 onp.random.seed(1)
 
@@ -48,8 +49,6 @@ class Field:
         self.pf_args['Ny'] = Ny
         self.pf_args['Nz'] = Nz
         print(f"Nx = {Nx}, Ny = {Ny}, Nz = {Nz}")
-        print(f"Total num of grains = {self.pf_args['num_grains']}")
-        print(f"Total num of orientations = {self.pf_args['num_oris']}")
         print(f"Total num of finite difference cells = {len(cells)}")
 
         cell_points = onp.take(points, cells, axis=0)
@@ -149,21 +148,140 @@ class Field:
         plt.savefig(os.path.join(pf_pdf_folder, "ipf_legend.pdf"), bbox_inches='tight')
 
         self.unique_oris_rgb, self.unique_grain_directions = rgb, grain_directions
+ 
 
-    def convert_to_3D_images(self):
-        step = 0
-        file_path = os.path.join(self.pf_args['data_dir'], f"vtk/pf/sols/u{step:03d}.vtu")
-        mesh_w_data = meshio.read(file_path)
-        cell_ori_inds = mesh_w_data.cell_data['ori_inds'][0] 
 
-        # By default, numpy uses order='C'
-        cell_ori_inds_3D = np.reshape(cell_ori_inds, (self.pf_args['Nz'], self.pf_args['Ny'], self.pf_args['Nx']))
+def process_eta(pf_args):
+    step = 13
+    file_path = os.path.join(pf_args['data_dir'], f"vtk/pf/sols/u{step:03d}.vtu")
+    mesh_w_data = meshio.read(file_path)
+    cell_ori_inds = mesh_w_data.cell_data['ori_inds'][0] 
 
-        # This should also work
-        # cell_ori_inds_3D = np.reshape(cell_ori_inds, (self.pf_args['Nx'], self.pf_args['Ny'], self.pf_args['Nz']), order='F')
+    # By default, numpy uses order='C'
+    cell_ori_inds_3D = onp.reshape(cell_ori_inds, (pf_args['Nz'], pf_args['Ny'], pf_args['Nx']))
 
-        print(cell_ori_inds_3D.shape)
-        return cell_ori_inds_3D
+    # This should also work
+    # cell_ori_inds_3D = onp.reshape(cell_ori_inds, (pf_args['Nx'], pf_args['Ny'], pf_args['Nz']), order='F')
+
+    print(cell_ori_inds_3D.shape)
+
+    T = mesh_w_data.cell_data['T'][0] 
+    nonliquid = T.reshape(-1) < pf_args['T_liquidus']
+    edges_in_order = compute_edges_in_order(pf_args)
+
+
+    points = mesh_w_data.points
+    cells = mesh_w_data.cells_dict['hexahedron']
+    cell_points = onp.take(points, cells, axis=0)
+    centroids = onp.mean(cell_points, axis=1)
+
+    domain_vol = pf_args['domain_x']*pf_args['domain_y']*pf_args['domain_z']
+    volumes = domain_vol / len(cells) * onp.ones(len(cells))
+
+    grains_combined = BFS(edges_in_order, nonliquid, cell_ori_inds, pf_args)
+    grain_vols, grain_centroids = get_aspect_ratio_inputs(grains_combined, volumes, centroids)
+    eta_results = compute_aspect_ratios_and_vols(grain_vols, grain_centroids)
+
+    # print(eta_results)
+
+    return eta_results
+
+
+
+def compute_edges_in_order(pf_args):
+    Nx, Ny, Nz = pf_args['Nx'], pf_args['Ny'], pf_args['Nz']
+    num_total_cells = Nx*Ny*Nz
+    cell_inds = onp.arange(num_total_cells).reshape(Nz, Ny, Nx)
+    edges_x = onp.stack((cell_inds[:, :, :-1], cell_inds[:, :, 1:]), axis=3).reshape(-1, 2)
+    edges_y = onp.stack((cell_inds[:, :-1, :], cell_inds[:, 1:, :]), axis=3).reshape(-1, 2)
+    edges_z = onp.stack((cell_inds[:-1, :, :], cell_inds[1:, :, :]), axis=3).reshape(-1, 2)
+    edges = onp.vstack((edges_x, edges_y, edges_z))
+    print(f"edges.shape = {edges.shape}")
+    edges_in_order = [[] for _ in range(num_total_cells)]
+    print(f"Re-ordering edges and face_areas...")
+    for i, edge in enumerate(edges):
+        node1 = edge[0]
+        node2 = edge[1]
+        edges_in_order[node1].append(node2)
+        edges_in_order[node2].append(node1)  
+    return edges_in_order
+
+
+def BFS(edges_in_order, nonliquid, cell_ori_inds, pf_args, combined=True):
+    num_graph_nodes = len(nonliquid)
+    print(f"BFS...")
+    visited = onp.zeros(num_graph_nodes)
+    grains = [[] for _ in range(pf_args['num_oris'])]
+    for i in range(len(visited)):
+        if visited[i] == 0 and nonliquid[i]:
+            oris_index = cell_ori_inds[i]
+            grains[oris_index].append([])
+            queue = [i]
+            visited[i] = 1
+            while queue:
+                s = queue.pop(0) 
+                grains[oris_index][-1].append(s)
+                connected_nodes = edges_in_order[s]
+                for cn in connected_nodes:
+                    if visited[cn] == 0 and cell_ori_inds[cn] == oris_index and nonliquid[cn]:
+                        queue.append(cn)
+                        visited[cn] = 1
+
+    grains_combined = []
+    for i in range(len(grains)):
+        grains_oris = grains[i] 
+        for j in range(len(grains_oris)):
+            grains_combined.append(grains_oris[j])
+
+    if combined:
+        return grains_combined
+    else:
+        return grains
+
+
+def get_aspect_ratio_inputs(grains_combined, volumes, centroids):
+    grain_vols = []
+    grain_centroids = []
+    for i in range(len(grains_combined)):
+        grain = grains_combined[i]
+        grain_vol = onp.array([volumes[g] for g in grain])
+        grain_centroid = onp.take(centroids, grain, axis=0)
+        assert grain_centroid.shape == (len(grain_vol), 3)
+        grain_vols.append(grain_vol)
+        grain_centroids.append(grain_centroid)
+
+    return grain_vols, grain_centroids
+
+
+def compute_aspect_ratios_and_vols(grain_vols, grain_centroids):
+    pca = PCA(n_components=3)
+    print(f"Call compute_aspect_ratios_and_vols")
+    grain_sum_vols = []
+    grain_sum_aspect_ratios = []
+
+    for i in range(len(grain_vols)):
+        grain_vol = grain_vols[i]
+        sum_vol = onp.sum(grain_vol)
+     
+        if len(grain_vol) < 5:
+            print(f"Grain vol too small, ignore and set aspect_ratio = 1.")
+            grain_sum_aspect_ratios.append(1.)
+        else:
+            directions = grain_centroids[i]
+            weighted_directions = directions * grain_vol[:, None]
+            # weighted_directions = weighted_directions - onp.mean(weighted_directions, axis=0)[None, :]
+            pca.fit(weighted_directions)
+            components = pca.components_
+            ev = pca.explained_variance_
+            lengths = onp.sqrt(ev)
+            aspect_ratio = 2*lengths[0]/(lengths[1] + lengths[2])
+            grain_sum_aspect_ratios.append(aspect_ratio)
+
+        grain_sum_vols.append(sum_vol)
+
+    print(len(grain_sum_vols))
+    print(len(grain_sum_aspect_ratios))
+    return [grain_sum_vols, grain_sum_aspect_ratios]
 
 
 def walltime(data_dir=None):
@@ -183,30 +301,6 @@ def walltime(data_dir=None):
             return return_values
         return wrapper
     return decorate
-
-
-def read_path(pf_args):
-    """TODO: should be used by CFD
-    """
-    traveled_time = pf_args['laser_path']['time']
-    x_corners = pf_args['laser_path']['x_pos']
-    y_corners = pf_args['laser_path']['y_pos']
-    power_control = pf_args['laser_path']['switch'][:-1]
-
-    ts, xs, ys, ps = [], [], [], []
-    for i in range(len(traveled_time) - 1):
-        ts_seg = onp.arange(traveled_time[i], traveled_time[i + 1], pf_args['dt'])
-        xs_seg = onp.linspace(x_corners[i], x_corners[i + 1], len(ts_seg))
-        ys_seg = onp.linspace(y_corners[i], y_corners[i + 1], len(ts_seg))
-        ps_seg = onp.linspace(power_control[i], power_control[i], len(ts_seg))
-        ts.append(ts_seg)
-        xs.append(xs_seg)
-        ys.append(ys_seg)
-        ps.append(ps_seg)
-
-    ts, xs, ys, ps = onp.hstack(ts), onp.hstack(xs), onp.hstack(ys), onp.hstack(ps)  
-    print(f"Total number of time steps = {len(ts)}")
-    return ts, xs, ys, ps
 
 
 def make_video(pf_args):

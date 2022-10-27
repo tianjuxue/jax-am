@@ -4,6 +4,6 @@ API reference
 Abstract ODE solver
 -------------------
 
-.. automodule:: modules.phase_field.abstract_solver
+.. automodule:: jax_am.phase_field.utils
    :members:
 

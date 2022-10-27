@@ -4,23 +4,23 @@ dim: 3
 
 ###
 # Number of orientations.
-num_oris: 3
+num_oris: 20
 
 ###
 # Number of grains.
-num_grains: 10000
+num_grains: 8000
 
 ###
 # The height of the domain (z-direction domain size). Unit: [m]
-domain_z: 1.e-3
+domain_z: 5.e-5
 
 ###
 # The width of the domain (y-direction domain size). Unit: [m]
-domain_y: 1.e-5
+domain_y: 4.e-4
 
 ###
 # The length of the domain (y-direction domain size). Unit: [m]
-domain_x: 1.e-3
+domain_x: 4.e-4
 
 ###
 # Liquidus temperature. Unit: [K]
@@ -52,7 +52,7 @@ m_g: 2.4e+5
  
 ###
 # anisotropy (phase-field parameter). Unit: []
-anisotropy: 0.15
+anisotropy: 0.
  
 ###
 # An ad-hoc parameter (phase-field parameter). Unit: []
@@ -60,7 +60,7 @@ ad_hoc: 1.
 
 ###
 # Output solution steps.
-write_sol_interval: 5000
+write_sol_interval: 1000
  
 ###
 # Check solution steps.
@@ -71,6 +71,15 @@ check_sol_interval: 20
 dt: 2.e-7
 
 ###
-# The time step for integration. Unit: [s]
-t_OFF: 0.005
+# Laser moving velocity. Unit: [m/s]
+vel: 0.25
 
+###
+# Laser toolpath. 
+# Unit for time: [s]
+# Unit for x_pos and y_pos: [m]
+laser_path:
+  x_pos: [1.e-4, 1.e-4, 3.e-4, 1.e-4]
+  y_pos: [1.e-4, 3.e-4, 3.e-4, 1.e-4]
+  z_pos: [5.e-5, 5.e-5, 5.e-5, 5.e-5]
+  switch: [1, 1, 1, 0]

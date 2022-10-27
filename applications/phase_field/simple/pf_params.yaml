@@ -23,8 +23,8 @@ domain_y: 2.e-4
 domain_x: 1.e-3
 
 ###
-# Melting point. Unit: [K]
-T_melt: 1700.
+# Liquidus temperature. Unit: [K]
+T_liquidus: 1623
  
 ###
 # Ambient temperature. Unit: [K]
@@ -69,4 +69,8 @@ check_sol_interval: 20
 ###
 # The time step for integration. Unit: [s]
 dt: 2.e-7
+
+###
+# The time step for integration. Unit: [s]
+t_OFF: 0.0024
 

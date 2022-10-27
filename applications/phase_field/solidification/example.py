@@ -9,7 +9,7 @@ from functools import partial
 from orix.quaternion import Orientation
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.phase_field.utils import Field, walltime, read_path
+from jax_am.phase_field.utils import Field, walltime
 from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
@@ -29,7 +29,7 @@ def get_T_fn(polycrystal, pf_args):
         thermal_grad = 5.e5
         cooling_rate = thermal_grad * vel
         t_total = pf_args['domain_z'] / vel
-        T = pf_args['T_melt'] + thermal_grad * z - cooling_rate * t
+        T = pf_args['T_liquidus'] + thermal_grad * z - cooling_rate * t
         return T[:, None]
     return jax.jit(get_T_quench)
 
@@ -65,8 +65,6 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
-    pf_args['anisotropy'] = 0.15
-
     generate_neper = False
     if generate_neper:
         pre_processing(pf_args)
@@ -75,8 +73,7 @@ def integrator():
     polycrystal = Field(pf_args, ori2)
     pf_solver = PFSolver(pf_args, polycrystal)
     pf_sol0 = pf_solver.ini_cond()
-    EPS = 1e-10
-    ts = np.arange(0., 0.0050 + EPS, pf_args['dt'])
+    ts = np.arange(0., pf_args['t_OFF'] + 1e-10, pf_args['dt'])
     pf_solver.clean_sols()
     pf_state = (pf_sol0, ts[0])
     T_quench_fn = get_T_fn(polycrystal, pf_args)

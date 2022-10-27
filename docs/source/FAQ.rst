@@ -35,8 +35,6 @@ All input parameters including laser path are now included in the YAML file (``j
 
 This means that we turn the laser on at t=0 [s], x=0.2 [mm], y=0.1 [mm], then turn the laser off at t=0.0024 [s], x=0.8, [mm], y=0.1 [mm]. In between those time stamps, laser is assumed to travel with a constant speed.
 
-Please also check :ref:`prep` for more information.
-
 
 Q: I got an error of "certain directory does not exist".
 --------------------------------------------------------

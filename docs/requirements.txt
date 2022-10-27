@@ -30,3 +30,5 @@ jaxopt
 meshio[all]
 orix
 gmsh
+pyfiglet
+scikit-learn
