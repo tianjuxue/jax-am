@@ -1,7 +1,7 @@
 *reference/
 *.DS_Store
 *data/
-modules/fem/tests/*/jax_fem/*
+jax_am/fem/tests/*/jax_fem/*
 
 
 

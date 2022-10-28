@@ -1,13 +1,18 @@
 # Quick Start
 
-The typical workflow contains two major steps:
-1. Generate a polycrystal structure and mesh it (with Neper)
-2. Perform phase-field simulation.
 
-The file  `jax-am/jax_am/phase_field/example.py` is an instructive example. To run this file, under root directory (`jax-am/`) and run
+Install JAX-AM by
 
 ```
-python -m jax_am.phase_field.example
+pip install jax-am
 ```
 
-Please see the comments in  `jax-am/jax_am/phase_field/example.py` for further details.
+Then refer to  `applications/` for a variety of examples. For example, run
+
+```
+python -m applications.phase_field.simple.example
+```
+from the root directory will run an application of the phase-field method with a simple example.
+
+
+We will build (much) better documentation in the future. Stay tuned!

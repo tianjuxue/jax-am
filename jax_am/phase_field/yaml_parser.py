@@ -9,6 +9,3 @@ def pf_parse(yaml_filepath):
         print(yaml.dump(args, default_flow_style=False))
         print(f"These are default parameters")
     return args
-
-
- 

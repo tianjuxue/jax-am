@@ -59,10 +59,9 @@ Contents
    quick_start
    equations
    gallery
-   FAQ
    api
-   about
    tutorial
+   about
 
 Indices and tables
 ==================
