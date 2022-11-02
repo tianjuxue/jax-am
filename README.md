@@ -1,8 +1,13 @@
-# JAX-AM
-
 <p align="middle">
   <img src="docs/materials/logo.png" width="200" />
 </p>
+
+# JAX-AM
+
+[![Doc](https://img.shields.io/readthedocs/jax-am)](https://jax-am.readthedocs.io/en/latest/)
+![PyPI](https://img.shields.io/pypi/v/jax-am) ![Github Star](https://img.shields.io/github/stars/tianjuxue/jax-am)
+![Github Fork](https://img.shields.io/github/forks/tianjuxue/jax-am)
+![License](https://img.shields.io/github/license/tianjuxue/jax-am)
 
 A GPU-based simulation toolbox for additive manufacturing.
 
