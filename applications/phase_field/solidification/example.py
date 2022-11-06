@@ -65,9 +65,8 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
-    generate_neper = False
-    if generate_neper:
-        pre_processing(pf_args)
+
+    pre_processing(pf_args)
 
     ori2 = get_ori2(pf_args)
     polycrystal = Field(pf_args, ori2)

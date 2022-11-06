@@ -1,4 +1,4 @@
 from pyfiglet import Figlet
 
 f = Figlet(font='starwars')
-print(f.renderText('JAX-AM'))
+print(f.renderText('JAX - PF'))

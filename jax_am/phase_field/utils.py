@@ -17,8 +17,7 @@ onp.random.seed(1)
 
 
 class Field:
-    """Handles polycrystal mesh, grain orientations...
-    TODO: Implement post-processing functions
+    """Handles polycrystal mesh, grain orientations, etc.
     """
     def __init__(self, pf_args, ori2=None):
         self.pf_args = pf_args
@@ -149,7 +148,6 @@ class Field:
 
         self.unique_oris_rgb, self.unique_grain_directions = rgb, grain_directions
  
-
 
 def process_eta(pf_args):
     step = 13

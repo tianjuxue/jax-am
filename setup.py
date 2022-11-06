@@ -12,11 +12,12 @@ def get_version():
 
 __version__ = get_version()
 
+
 if __name__=='__main__':
     setup(
         name="jax-am",
         version=__version__,
-        description="GPU-accelerated simulation toolbox for additive manufacturing.",
+        description="GPU-accelerated simulation toolbox for additive manufacturing based on JAX.",
         author="Xue et al.",
         author_email="tianjuxue@outlook.com",
         long_description=open(os.path.join(_CURRENT_DIR, "README.md")).read(),

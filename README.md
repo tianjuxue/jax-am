@@ -9,7 +9,7 @@
 ![Github Fork](https://img.shields.io/github/forks/tianjuxue/jax-am)
 ![License](https://img.shields.io/github/license/tianjuxue/jax-am)
 
-A GPU-based simulation toolbox for additive manufacturing.
+A GPU-accelerated simulation toolbox for additive manufacturing based on [JAX](https://github.com/google/jax).
 
 ## Documentation
 

@@ -42,9 +42,7 @@ def integrator():
     pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
 
-    generate_neper = False
-    if generate_neper:
-        pre_processing(pf_args)
+    pre_processing(pf_args)
 
     polycrystal = Field(pf_args)
     pf_solver = PFSolver(pf_args, polycrystal)
