@@ -80,6 +80,8 @@ html_theme_options = {
 
 # html_static_path = ['_static']
 
+html_logo = '../materials/logo.png'
+
 # To enable Latex in markdown
 # See https://myst-parser.readthedocs.io/en/latest/syntax/optional.html
 myst_enable_extensions = ['dollarmath', 'amsmath', 'html_image', 'colon_fence']

@@ -21,6 +21,11 @@ Note: if you want to install JAX-AM in editable mode, e.g., for code development
 pip install --editable .
 ```
 
+>**Note**: JAX-AM depends on JAX. If you want to use GPU, you need to first [install the GPU version of JAX](https://github.com/google/jax#installation) properly.
+
+>**Note**: If you want to use the phase-field package of JAX-AM, [Neper](https://neper.info/) is required for polycrystal generation.
+
+
 
 
  
