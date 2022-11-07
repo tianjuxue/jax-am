@@ -23,7 +23,9 @@ DEM simulation can be used for simulating powder dynamics in metal AM.
 
 <p align="middle">
   <img src="docs/materials/dem.gif" width="400" />
-  <figcaption align="middle"><b align="middle">Free falling of 64,000 spherical particles.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Free falling of 64,000 spherical particles.</em>
 </p>
 
 
@@ -33,7 +35,9 @@ CFD helps to understand the AM process by solving the (incompressible) Navier-St
 
 <p align="middle">
   <img src="docs/materials/melt_pool_dynamics.png" width="400" />
-  <figcaption align="middle"><b align="middle">Melt pool dynamics.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Melt pool dynamics.</em>
 </p>
 
 
@@ -43,13 +47,17 @@ PFM models the grain development that is critical to form the structure of the a
 
 <p align="middle">
   <img src="docs/materials/single_track_eta_DNS.gif" width="600" />
-  <figcaption align="middle"><b align="middle">Microstructure evolution.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Microstructure evolution.</em>
 </p>
 
 <p align="middle">
   <img src="docs/materials/solidification_isotropic.gif" width="300" />
   <img src="docs/materials/solidification_anisotropic.gif" width="300" /> 
-  <figcaption align="middle"><b align="middle">Directional solidification with isotropic (left) and anisotropic (right) grain growth.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Directional solidification with isotropic (left) and anisotropic (right) grain growth.</em>
 </p>
 
 
@@ -71,21 +79,26 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
   - Optimal thermal control
 
 
-
 <p align="middle">
   <img src="docs/materials/ded.gif" width="600" />
-  <figcaption align="middle"><b align="middle">Thermal profile in direct energy deposition.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Thermal profile in direct energy deposition.</em>
 </p>
 
 <p align="middle">
   <img src="docs/materials/von_mises.png" width="400" />
-   <figcaption align="middle"><b align="middle">Linear static analysis of a bracket.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Linear static analysis of a bracket.</em>
 </p>
 
 
 <p align="middle">
   <img src="docs/materials/to.gif" width="600" />
-   <figcaption align="middle"><b align="middle">Topology optimization with differentiable simulation.</b></figcaption>
+</p>
+<p align="middle">
+    <em >Topology optimization with differentiable simulation.</em>
 </p>
 
 ## Documentation
