@@ -2,6 +2,8 @@
 
 _TODO: Add documentation about the PDEs to solve and how we solve them._
 
+This is just a markdown template!
+
 E.g., $\zeta$, $\eta$, $T$
 
 $$

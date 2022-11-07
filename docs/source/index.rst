@@ -40,7 +40,7 @@ Solving Problems in Additive Manufacturing
 Scientific Simulations with JAX
 -------------------------------
 
-We use `JAX <https://github.com/google/jax>`_ for implementation of the computationally intensive part. The polycrystal structure is generated with `Neper <https://neper.info/>`_. 
+We use `JAX <https://github.com/google/jax>`_ for implementation of the computationally intensive part.
 
 Why JAX? We believe JAX is an exciting tool for scientific simulations.  
 
@@ -56,9 +56,9 @@ Contents
    :maxdepth: 1
    :caption: Contents:
 
+   installation
    quick_start
    equations
-   gallery
    api
    tutorial
    about
