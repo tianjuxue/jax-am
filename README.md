@@ -11,7 +11,7 @@ A GPU-accelerated differentiable simulation toolbox for additive manufacturing (
 ![Github Fork](https://img.shields.io/github/forks/tianjuxue/jax-am)
 ![License](https://img.shields.io/github/license/tianjuxue/jax-am)
 
-JAX-AM is a collection of several numerical tools, currently including __Discrete Element Method (DEM)__, __Computational Fluid Dynamics (CFD)__, __Phase Field Method (PF)__ and __Finite Element Method (FEM)__, that cover the analysis of the __Material-Process-Structure-Property__ relationship in AM. 
+JAX-AM is a collection of several numerical tools, currently including __Discrete Element Method (DEM)__, __Computational Fluid Dynamics (CFD)__, __Phase Field Method (PFM)__ and __Finite Element Method (FEM)__, that cover the analysis of the __Material-Process-Structure-Property__ relationship in AM. 
 
 Our vision is to share with the AM community a __free, open-source__ (under the GPL-3.0 License) software that facilitates the relevant computational research. In the JAX ecosystem, we hope to emphasize the potential of JAX for scientific computing. At the same time, AI-enabled research in AM can be made easy with JAX-AM. 
 
@@ -23,7 +23,7 @@ DEM simulation can be used for simulating powder dynamics in metal AM.
 
 <p align="middle">
   <img src="docs/materials/dem.gif" width="400" />
-  <figcaption align="middle"><b>Free falling of 64,000 spherical particles.</b></figcaption>
+  <figcaption align="middle"><b align="middle">Free falling of 64,000 spherical particles.</b></figcaption>
 </p>
 
 
@@ -33,23 +33,23 @@ CFD helps to understand the AM process by solving the (incompressible) Navier-St
 
 <p align="middle">
   <img src="docs/materials/melt_pool_dynamics.png" width="400" />
-  <figcaption align="middle"><b>Melt pool dynamics.</b></figcaption>
+  <figcaption align="middle"><b align="middle">Melt pool dynamics.</b></figcaption>
 </p>
 
 
-## Phase Field Method (PF)
+## Phase Field Method (PFM)
 
-PF models the grain development that is critical to form the structure of the as-built sample.
+PFM models the grain development that is critical to form the structure of the as-built sample.
 
 <p align="middle">
   <img src="docs/materials/single_track_eta_DNS.gif" width="600" />
-  <figcaption align="middle"><b>Microstructure evolution.</b></figcaption>
+  <figcaption align="middle"><b align="middle">Microstructure evolution.</b></figcaption>
 </p>
 
 <p align="middle">
   <img src="docs/materials/solidification_isotropic.gif" width="300" />
   <img src="docs/materials/solidification_anisotropic.gif" width="300" /> 
-  <figcaption align="middle"><b>Directional solidification with isotropic (left) and anisotropic (right) grain growth.</b></figcaption>
+  <figcaption align="middle"><b align="middle">Directional solidification with isotropic (left) and anisotropic (right) grain growth.</b></figcaption>
 </p>
 
 
@@ -74,18 +74,18 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
 
 <p align="middle">
   <img src="docs/materials/ded.gif" width="600" />
-  <figcaption align="middle"><b>Thermal profile in direct energy deposition.</b></figcaption>
+  <figcaption align="middle"><b align="middle">Thermal profile in direct energy deposition.</b></figcaption>
 </p>
 
 <p align="middle">
   <img src="docs/materials/von_mises.png" width="400" />
-   <figcaption align="middle"><b>Linear static analysis of a bracket.</b></figcaption>
+   <figcaption align="middle"><b align="middle">Linear static analysis of a bracket.</b></figcaption>
 </p>
 
 
 <p align="middle">
   <img src="docs/materials/to.gif" width="600" />
-   <figcaption align="middle"><b>Topology optimization with differentiable simulation.</b></figcaption>
+   <figcaption align="middle"><b align="middle">Topology optimization with differentiable simulation.</b></figcaption>
 </p>
 
 ## Documentation
