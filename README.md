@@ -11,7 +11,7 @@ A GPU-accelerated differentiable simulation toolbox for additive manufacturing (
 ![Github Fork](https://img.shields.io/github/forks/tianjuxue/jax-am)
 ![License](https://img.shields.io/github/license/tianjuxue/jax-am)
 
-JAX-AM is a collection of several numerical tools, currently including __Discrete Element Method (DEM)__, __Computational Fluid Dynamics (CFD)__, __Phase Field Method (PFM)__ and __Finite Element Method (FEM)__, that cover the analysis of the __Material-Process-Structure-Property__ relationship in AM. 
+JAX-AM is a collection of several numerical tools, currently including __Discrete Element Method (DEM)__, __Computational Fluid Dynamics (CFD)__, __Phase Field Method (PFM)__ and __Finite Element Method (FEM)__, that cover the analysis of the __Process-Structure-Property__ relationship in AM. 
 
 Our vision is to share with the AM community a __free, open-source__ (under the GPL-3.0 License) software that facilitates the relevant computational research. In the JAX ecosystem, we hope to emphasize the potential of JAX for scientific computing. At the same time, AI-enabled research in AM can be made easy with JAX-AM. 
 
