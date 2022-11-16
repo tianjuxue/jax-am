@@ -1,0 +1,18 @@
+{
+    "rho": 8170,
+    "visco": 7e-3,
+    "Marangoni": -1e-4,
+    "dt": 2e-6,
+    "t_OFF": 0.00208333,
+    "speed": 0.96,
+    "X0": [5e-4, 2e-4, 4e-4],    
+    "rb": 3.35e-5,
+    "eta": 0.45,
+    "P": 285,
+    "T_ref": 300,
+    "Ts": 1533,
+    "Tl": 1609,
+    "write_sol_interval": 50,
+    "check_sol_interval": 5
+}
+
