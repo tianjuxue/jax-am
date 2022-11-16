@@ -10,136 +10,7 @@ import glob
 jax.config.update("jax_enable_x64", True)
 
 
-class poisson():
-    def __init__(self, mesh, nonlinear=False, miu=None, miu_fn=None,source_fn=None,bc_type=None, bc_value=None):
-        self.msh = mesh
-        self.ndof = self.msh.cell_num
-
-        self.nonlinear = nonlinear
-        if self.nonlinear == False:
-            assert np.isscalar(
-                miu), 'For linear problem, a constant miu value is required'
-            self.miu = miu
-            self.laplace_kernel = self.linear_laplace_kernal
-        else:
-            assert miu_fn != None, 'For nonlinear problem, please input miu_fn: miu = miu_fn(U)'
-            self.miu_fn = miu_fn
-            self.laplace_kernel = self.nonlinear_laplace_kernal
-
-        if source_fn == None:
-            self.source_fn = lambda *args : 0
-        else:
-            self.source_fn = source_fn
-
-        self.set_bc(bc_type, bc_value)
-
-    def linear_laplace_kernal(self, Up, Unb):
-        return ((Unb - Up) / self.msh.D * self.miu * self.msh.dS).sum()
-
-    def nonlinear_laplace_kernal(self, Up, Unb):
-        miu = self.miu_fn(Up / 2. + Unb / 2.)
-        return ((Unb - Up) / self.msh.D * miu * self.msh.dS).sum()
-
-    def laplace(self, U):
-        U_cell_nb = U[self.msh.cell_conn]
-        return jax.vmap(self.laplace_kernel)(U_cell_nb[:, 0], U_cell_nb[:, 1:])
-
-    def source(self,U,*args):
-        return jax.vmap(self.source_fn)(U,*args)
-
-    def apply_BC_to_residual(self, U, residual):
-        flux = np.array([])
-        if self.bc_type != None:
-            for i in range(len(self.bc_type)):
-                if self.bc_type[i] == 0:
-                    if self.nonlinear == True:
-                        miu = self.miu_fn(self.bc_value[i])
-                    else:
-                        miu = self.miu
-                    flux = np.concatenate(
-                        (flux, miu * 2 *
-                         (self.bc_value[i] -
-                          U[self.msh.surf_cell[self.msh.surf_sets[i]]]) /
-                         self.msh.D[i] * self.msh.dS[i]))
-                if self.bc_type[i] == 1:
-                    flux = np.concatenate(
-                        (flux, self.bc_value[i] * np.abs(self.msh.dS[i])))
-            residual = residual.at[self.msh.surf_cell].add(-flux)
-        return residual
-
-    def compute_residual_kernel(self, U_cell_nb, *args):
-        Up = U_cell_nb[0]
-        Unb = U_cell_nb[1:]
-        return -self.laplace_kernel(Up, Unb) - self.source_fn(Up,*args)*self.msh.dV
-
-    def compute_residual(self, U, *args):
-        residual = -self.laplace(U) - self.source(U,*args)*self.msh.dV
-        residual = self.apply_BC_to_residual(U, residual)
-        return residual
-
-    def apply_BC_to_matrix(self, values):
-        value_Dirichlet = np.array([])
-        loc_Dirichlet = np.array([], dtype=int)
-        if self.bc_type != None:
-            for i in range(len(self.bc_type)):
-                if self.bc_type[i] == 0:
-                    if self.nonlinear == True:
-                        miu = self.miu_fn(self.bc_value[i])
-                    else:
-                        miu = self.miu + self.bc_value[i]*0.
-                    value_Dirichlet = np.concatenate(
-                        (value_Dirichlet,
-                         miu * 2 / self.msh.D[i] * self.msh.dS[i]))
-                    loc_Dirichlet = np.concatenate(
-                        (loc_Dirichlet, self.msh.surf_cell[self.msh.surf_sets[i]]))
-            values = values.at[loc_Dirichlet, 0].add(value_Dirichlet)
-        return values
-
-    def newton_update(self, U, *args):
-        def D_fn(cell_nb_sol, *args):
-            return jax.jacrev(self.compute_residual_kernel)(cell_nb_sol, *args)
-
-        vmap_fn = jax.vmap(D_fn)
-        values = vmap_fn(U[self.msh.cell_conn],*args)
-        self.values = self.apply_BC_to_matrix(values)
-
-    def compute_linearized_residual(self, U):
-        return (self.values * U[self.msh.cell_conn]).sum(axis=1)
-
-    def jacobiPreconditioner(self,U):
-        return (self.values[:,0]*U)
-
-    def set_bc(self, bc_type, bc_value):
-        self.bc_type = bc_type
-        self.bc_value = bc_value
-
-
-class poisson_transient():
-    def __init__(self,
-                 mesh,
-                 dt,
-                 nonlinear=False,
-                 miu=None,
-                 rho=None,
-                 miu_fn=None,
-                 rho_fn=None,
-                 source_fn=None):
-        
-        if source_fn == None:
-            source_fn = lambda *args : 0
-        if nonlinear: 
-            assert rho_fn != None, 'For nonlinear problem, please input rho_fn: rho = rho_fn(U)'
-            self.rho_fn = rho_fn
-            fn = lambda U,U0,*args: -(rho_fn(U)/2.+rho_fn(U0)/2.)*(U-U0)/dt + source_fn(U,*args)
-        else:
-            assert np.isscalar(rho), 'For linear problem, a constant rho value is required'
-            fn = lambda U,U0,*args: -rho*(U-U0)/dt + source_fn(U,*args)
-            self.rho = rho
-        self.step = poisson(mesh, nonlinear, miu, miu_fn, source_fn=fn)
-
-
-
-# calculate ghost_cell values
+ # calculate ghost_cell values
 def ghost_cell(BC, value, dx=None, neighbor=None):
     if BC == 'Dirchlet' or BC == 0:
         return 2 * value - neighbor
@@ -161,7 +32,6 @@ def get_GC_values(f, BCs, dX):
         ghost_cell(BCs[0][4], BCs[1][4], -dX[2], f[:, :, [0]]),
         ghost_cell(BCs[0][5], BCs[1][5], dX[2], f[:, :, [-1]])
     ]
-
 
 def div(f, vel_f, dX, theta=0.125, BCs=None):
     if BCs == None:
@@ -192,7 +62,6 @@ def div(f, vel_f, dX, theta=0.125, BCs=None):
              f_face_z[:, :, :-1] * w_f[:, :, :-1]) / dX[2])
     return flux
 
-
 def gradient(f, dX, BCs=None):
     if BCs == None:
         BCs = [[1, 1, 1, 1, 1, 1], [0., 0., 0., 0., 0., 0.]]
@@ -204,7 +73,6 @@ def gradient(f, dX, BCs=None):
                            (np.diff(f, axis=2, append=f_gc[5]) +
                             np.diff(f, axis=2, prepend=f_gc[4])) / dX[2] / 2.),
                           axis=-1)
-
 
 def get_face_vels(vel, dX, BCs=None):
     if BCs == None:
@@ -227,227 +95,207 @@ def get_face_vels(vel, dX, BCs=None):
     w_f = (w[:, :, 1:] + w[:, :, :-1]) / 2
     return u_f, v_f, w_f
 
+def get_face_vel_component(vel, dX, axis=0, BCs=None):
+    if BCs == None:
+        BCs = [[1, 1, 1, 1, 1, 1], [0., 0., 0., 0., 0., 0.]]
+    vel_gc = get_GC_values(vel, BCs, dX)
+
+    if axis == 0:
+        u = np.concatenate(
+            (vel_gc[0], vel, vel_gc[1]),
+            axis=0)
+        u_f = (u[1:, :, :] + u[:-1, :, :]) / 2
+        return u_f
+
+    if axis == 1:
+        v = np.concatenate(
+            (vel_gc[2], vel, vel_gc[3]),
+            axis=1)
+        v_f = (v[:, 1:, :] + v[:, :-1, :]) / 2
+        return v_f
+
+    if axis == 2:
+        w = np.concatenate(
+            (vel_gc[4], vel, vel_gc),
+            axis=2)
+        w_f = (w[:, :, 1:] + w[:, :, :-1]) / 2
+        return v_f
 
 
 class AM_3d():
-    def __init__(self, params):
-        self.params = params
-        self.meshio_mesh = params['meshio_mesh']
-        self.msh = params['mesh']
-        self.msh_v = params['mesh_local']
-        self.shape = params['mesh'].shape
-
-        self.clean_sols()
-
+    def __init__(self, args):
+        self.args = args
+        self.msh = args['mesh']
+        self.msh_local = args['mesh_local']
+        self.meshio_mesh = args['meshio_mesh']
         self.t = 0.
-        self.dt = params['dt']
-        self.T0 = np.zeros(self.shape) + params['T_ref']
-        self.conv_T0 = np.zeros(self.shape)
-        self.vel0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 3))
-        self.conv0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 3))
-        self.p0 = np.zeros((self.shape[0],self.shape[1],self.shape[2], 1))
+        self.eqn_T_init(args)
+        self.eqn_V_init(args)
 
-        rho_cp = lambda T: params['cp'](T) * params['rho']
-        source = lambda T, conv: -conv
-        self.eqn_T = poisson_transient(mesh=params['mesh'],
-                                       dt=params['dt'],
-                                       nonlinear=True,
-                                       miu_fn=params['k'],
-                                       rho_fn=rho_cp,
-                                       source_fn=source)
+    def time_integration(self):
+        Q = self.get_body_heat_source(self.t)
+        self.T, T_BCs, _ = self.eqn_T.update(self.T, self.conv_T, Q,
+                                             self.t, self.cell_conn)
+        fl0 = self.fluid_frac(self.T)
 
-        source = lambda u, conv, fl, grad_p: -1e5 * params['rho'] * (
-            1 - fl)**2 / (fl**3 + 1e-3) * u - params['rho'] * conv - grad_p
+        self.solidID += fl0
 
-        self.eqn_v = poisson_transient(mesh=params['mesh_local'],
-                                       dt=params['dt'],
-                                       nonlinear=False,
-                                       miu=params['visco'],
-                                       rho=params['rho'],
-                                       source_fn=source)
+        x0, x1, y0, y1, z0, z1 = self.get_moving_box_boundary(self.t)
 
-        source = lambda p, div_v: -div_v
-        self.poisson_for_p = poisson(mesh=params['mesh_local'],
-                                     miu=1.,
-                                     source_fn=source)
-        self.poisson_for_p.newton_update(np.zeros(self.poisson_for_p.ndof),
-                                         np.zeros(self.poisson_for_p.ndof))
+        vel, vel_BCs, grad_p0 = self.eqn_V.update(
+            self.vel[x0:x1, y0:y1, z0:z1], self.conv[x0:x1, y0:y1, z0:z1],
+            self.grad_p0[x0:x1, y0:y1, z0:z1], fl0[x0:x1, y0:y1, z0:z1],
+            self.T[x0:x1, y0:y1, z0:z1], self.cell_conn_local)
 
-        # for better JIT time, very ugly, to be modified
-        self.cell_conn = np.copy(params['mesh'].cell_conn)
-        self.cell_conn_local = np.copy(params['mesh_local'].cell_conn)
+        conv_T, conv = self.update_convective_terms(
+            self.T[x0:x1, y0:y1, z0:z1], vel, vel_BCs)
 
-        ## vector form, for calculate ghost cell value
-        self.vel_bc_type = [0, 0, 0, 0, 0, 0]
-        v0 = np.array([0., 0., 0.])
-        self.vel_bc_values = [v0, v0, v0, v0, v0, v0]
+        self.vel = self.vel.at[x0:x1, y0:y1, z0:z1].set(vel)
+        self.grad_p0 = self.grad_p0.at[x0:x1, y0:y1, z0:z1].set(grad_p0)
+        self.conv = self.conv.at[x0:x1, y0:y1, z0:z1].set(conv)
+        self.conv_T = self.conv_T.at[x0:x1, y0:y1, z0:z1].set(conv_T)
+        self.t += self.args['dt']
+
+    def get_body_heat_source(self, t):
+        def Gaussian_cylinder(xl, yl, zl, P, xc, yc, zc):
+            eta = self.args['eta']
+            r = self.args['rb']
+            d = self.args['phi'] * P / self.args['speed']
+            Q_laser = 2 * P * eta / d / np.pi / r**2 * np.exp(-2 * (
+                (xc - xl)**2 + (yc - yl)**2) / r**2)
+            Q_laser = Q_laser * ((zl - zc) <= d)* (self.args['heat_source'] == 1)
+            return Q_laser
+
+        xl, yl, zl, P = self.toolpath(t)
+        return Gaussian_cylinder(xl, yl, zl, P, self.msh.Xc[:, 0],
+                              self.msh.Xc[:, 1], self.msh.Xc[:, 2])
+
+    def get_moving_box_boundary(self, t):
+        ### for moving box
+        xl, yl, zl, _ = self.toolpath(t)
+        x0 = round(xl / self.msh.dX[0]) - round(self.msh_local.shape[0] / 2)
+        x0 = np.clip(x0,0,self.msh.shape[0]-self.msh_local.shape[0])
+        x1 = x0 + self.msh_local.shape[0]
+
+        y0 = round(yl / self.msh.dX[1]) - round(self.msh_local.shape[1] / 2)
+        y1 = y0 + self.msh_local.shape[1]
+
+        z0 = round(zl / self.msh.dX[2]) - self.msh_local.shape[2]
+        z0 = self.msh.shape[2] - self.msh_local.shape[2]
+        z1 = self.msh.shape[2]
+
+        return x0, x1, y0, y1, z0, z1
+
+    def update_convective_terms(self, T, vel, vel_BCs):
+        vel_f = get_face_vels(vel, self.msh.dX, vel_BCs)
+        conv_T = div(T, vel_f, self.msh.dX,theta=0.)
+#         conv = div(vel, vel_f, self.msh.dX, BCs=vel_BCs)
+        conv = div(vel, vel_f, self.msh.dX)
+        return conv_T, conv
+
+    def eqn_T_init(self, args):
+        self.eqn_T = energy_eqn(args)
+        self.eqn_T.bc_fn = self.get_energy_bc_fn()
+        self.cell_conn = np.copy(args['mesh'].cell_conn)
+
+        self.T = np.zeros(args['mesh'].shape + [1]) + args['T_ref']
+        self.solidID = np.zeros(args['mesh'].shape + [1],dtype=bool)
+        self.conv_T = self.T * 0.
+        self.Q = self.T * 0.
+
+    def eqn_V_init(self, args):
+        self.eqn_V = velosity_eqn(args)
+        self.eqn_V.bc_fn = self.get_vel_bc_fn()
+        self.cell_conn_local = np.copy(args['mesh_local'].cell_conn)
+
+        self.vel = np.zeros(args['mesh'].shape + [3])
+        self.conv = self.vel * 0.
+        self.grad_p0 = self.vel * 0.
+
+    def toolpath(self, t):
+        xl = self.args['X0'][0] + t * self.args['speed']
+        yl = self.args['X0'][1]
+        zl = self.args['X0'][2]
+        P = self.args['P'] * (t < self.args['t_OFF'])
+        return xl, yl, zl, P
+
+    def get_vel_bc_fn(self):
+        Dgamma_Dt = self.args['Marangoni']
+        visco = self.args['visco']
+
+        def marangoni_effect(T_top):
+            fl_top = self.fluid_frac(T_top)
+            T_top = np.pad(T_top, ((1, 1), (1, 1), (0, 0)), 'symmetric')
+            return np.stack(((T_top[2:, 1:-1] - T_top[:-2, 1:-1]) / 2. /
+                             self.msh_local.dX[0] * Dgamma_Dt / visco * fl_top,
+                             (T_top[1:-1, 2:] - T_top[1:-1, :-2]) / 2. /
+                             self.msh_local.dX[1] * Dgamma_Dt / visco * fl_top,
+                             np.zeros_like(T_top[1:-1, 1:-1])),
+                            axis=3)
+
+        def vel_bc(T):
+            marangoni = marangoni_effect(T[:, :, -1])
+            vel_bc_type = [0, 0, 0, 0, 0, 2]
+            v0 = np.array([0., 0., 0.])
+            vel_bc_values = [v0, v0, v0, v0, v0, marangoni]
+            vel_BCs = [vel_bc_type, vel_bc_values]
+
+            ## scaler form, for solving the poisson eqn
+            bc_type = [[0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 1],
+                       [0, 0, 0, 0, 0, 0]]
+            bc_values = []
+            for i in range(3):
+                bc_values.append([
+                    np.zeros(self.msh_local.surf_set_num[0]),
+                    np.zeros(self.msh_local.surf_set_num[1]),
+                    np.zeros(self.msh_local.surf_set_num[2]),
+                    np.zeros(self.msh_local.surf_set_num[3]),
+                    np.zeros(self.msh_local.surf_set_num[4]),
+                    marangoni[:, :, :, i].flatten() * visco,
+                ])
+            return vel_BCs, bc_type, bc_values
+
+        return vel_bc
+
+    def get_energy_bc_fn(self):
+        def Gaussian_flux(xl, yl, P, xc, yc):
+            eta = self.args['eta']
+            r = self.args['rb']
+            q_laser = 2 * P * eta / np.pi / r**2 * np.exp(-2 * (
+                (xc - xl)**2 + (yc - yl)**2) / r**2)
+
+            return q_laser
+
+        def energe_bc(t):
+            bc_type = [1, 1, 1, 1, 1, 1]
+            bc_values = [
+                np.zeros(self.msh.surf_set_num[0]),
+                np.zeros(self.msh.surf_set_num[1]),
+                np.zeros(self.msh.surf_set_num[2]),
+                np.zeros(self.msh.surf_set_num[3]),
+                np.zeros(self.msh.surf_set_num[4]),
+                np.zeros(self.msh.surf_set_num[5])
+            ]
+
+            if self.args['heat_source'] == 0:
+                xc = self.msh.surface[self.msh.surf_sets[-1]][:, 0]
+                yc = self.msh.surface[self.msh.surf_sets[-1]][:, 1]
+                xl, yl, zl, P = self.toolpath(t)
+                q_laser = Gaussian_flux(xl, yl, P, xc, yc)
+                bc_values[-1] = bc_values[-1] + q_laser
+
+            return bc_type, bc_values
+
+        return energe_bc
 
     def fluid_frac(self, T):
-        Tl = self.params['Tl']
-        Ts = self.params['Ts']
+        Tl = self.args['Tl']
+        Ts = self.args['Ts']
         return (np.clip(T, Ts, Tl) - Ts) / (Tl - Ts)
-        
-    def update_vel_BC(self, T_top):
-        fl_top = self.fluid_frac(T_top)
-        Dgamma_Dt = self.params['Marangoni']
-        visco = self.params['visco']
-        T_top = np.pad(T_top, ((1, 1), (1, 1), (0, 0)), 'symmetric')
 
-        marangoni = np.stack(
-            ((T_top[2:, 1:-1] - T_top[:-2, 1:-1]) / 2 / self.msh_v.dX[0] *
-             Dgamma_Dt / visco * fl_top,
-             (T_top[1:-1, 2:] - T_top[1:-1, :-2]) / 2 / self.msh_v.dX[1] *
-             Dgamma_Dt / visco * fl_top, np.zeros_like(T_top[1:-1, 1:-1])),
-            axis=3)
-
-        ## vector form, for calculate ghost cell value
-        self.vel_bc_type = [0, 0, 0, 0, 0, 2]
-        v0 = np.array([0., 0., 0.])
-        self.vel_bc_values = [v0, v0, v0, v0, v0, marangoni]
-
-        ## scaler form, for solving the poisson eqn
-        vel_bc_type = [[0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 1],
-                       [0, 0, 0, 0, 0, 0]]
-
-        vel_bc_values = []
-        for i in range(3):
-            vel_bc_values.append([
-                np.zeros(self.msh_v.surf_set_num[0]),
-                np.zeros(self.msh_v.surf_set_num[1]),
-                np.zeros(self.msh_v.surf_set_num[2]),
-                np.zeros(self.msh_v.surf_set_num[3]),
-                np.zeros(self.msh_v.surf_set_num[4]),
-                marangoni[:, :, :, i].flatten() * visco,
-            ])
-        return vel_bc_type, vel_bc_values
-
-    def update_engergy_BC(self, eqn, t):
-        xl = self.params['X0'][0] + t * self.params['speed']
-        yl = self.params['X0'][1]
-        P = self.params['P']
-        eta = self.params['eta']
-        r = self.params['rb']
-
-        xc = eqn.msh.surface[eqn.msh.surf_sets[-1]][:, 0]
-        yc = eqn.msh.surface[eqn.msh.surf_sets[-1]][:, 1]
-        q_laser = 2 * P * eta / np.pi / r**2 * np.exp(-2 *
-                                                      ((xc - xl)**2 +
-                                                       (yc - yl)**2) / r**2)
-
-        q_laser = q_laser*(t<self.params['t_OFF']) ## laser off
-        # top surf: laser + conv., other surfs: adiabatic
-        bc_type = [1, 1, 1, 1, 1, 1]
-        bc_values = [
-            np.zeros(eqn.msh.surf_set_num[0]),
-            np.zeros(eqn.msh.surf_set_num[1]),
-            np.zeros(eqn.msh.surf_set_num[2]),
-            np.zeros(eqn.msh.surf_set_num[3]),
-            np.zeros(eqn.msh.surf_set_num[4]), q_laser
-        ]
-        eqn.set_bc(bc_type, bc_values)
-        
-    @partial(jax.jit, static_argnums=0)
-    def update_tempearture(self, t, T0, conv_T0,cell_conn):
-        # for better JIT time, very ugly, to be modified
-        self.eqn_T.step.msh.cell_conn = cell_conn
-        self.update_engergy_BC(self.eqn_T.step, t)
-
-        T = solver_nonlinear(self.eqn_T.step, T0.flatten(), conv_T0.flatten(), init=T0.flatten()).reshape(self.shape)
-        fl = self.fluid_frac(T)
-
-        # for update vel BC
-        T_top = T[:, :, -1] + self.msh.dX[2] / 2 * self.eqn_T.step.bc_value[
-            -1].reshape(self.shape[0], self.shape[1]) / self.eqn_T.step.miu_fn(
-                T[:, :, -1])
-        
-        return T, fl, T_top
-
-    @partial(jax.jit, static_argnums=0)
-    def update_velosity(self, vel0, p0, conv0, fl, T0_top, cell_conn):
-        # for better JIT time, very ugly, to be modified
-        self.eqn_v.step.msh.cell_conn = cell_conn
-
-        grad_p0 = gradient(p0, self.msh_v.dX)
-
-        # update vel BC
-        vel_bc_type, vel_bc_values = self.update_vel_BC(T0_top)
-
-        # prediction step
-        vel = []
-        for i in range(0, 3):
-            self.eqn_v.step.set_bc(vel_bc_type[i], vel_bc_values[i])
-            vel.append(
-                solver_linear(self.eqn_v.step,
-                              vel0[:, :, :, i].flatten(),
-                              conv0[:, :, :, i].flatten(),
-                              fl.flatten(),
-                              grad_p0[:, :, :, i].flatten(),
-                              tol=1e-10))
-
-        vel = np.stack((vel[0].reshape(self.msh_v.shape), vel[1].reshape(
-            self.msh_v.shape), vel[2].reshape(self.msh_v.shape)),
-                       axis=3)
-
-        # pressure eqn
-        u_f, v_f, w_f = get_face_vels(vel, self.msh_v.dX,
-                                      [self.vel_bc_type, self.vel_bc_values])
-        div_vel = ((u_f[1:, :, :] - u_f[:-1, :, :]) / self.msh_v.dX[0] +
-                   (v_f[:, 1:, :] - v_f[:, :-1, :]) / self.msh_v.dX[1] +
-                   (w_f[:, :, 1:] - w_f[:, :, :-1]) /
-                   self.msh_v.dX[2]) / self.dt * self.params['rho']
-        p = solver_linear(self.poisson_for_p,
-                          div_vel.flatten(),
-                          tol=1e-10,
-                          update=True)
-        p = p.reshape(self.msh_v.shape[0], self.msh_v.shape[1],
-                      self.msh_v.shape[2], 1)
-
-
-        vel_gc = get_GC_values(vel, [self.vel_bc_type, self.vel_bc_values],
-                                self.msh_v.dX)
-        vel_f = get_face_vels(vel, self.msh_v.dX,
-                               [self.vel_bc_type, self.vel_bc_values])
-
-        # correction step
-        vel = vel - self.dt * gradient(p, self.msh.dX) / self.params['rho']
-        p += p0
-        conv = div(vel,vel_f,self.msh_v.dX,BCs=[self.vel_bc_type, self.vel_bc_values])
-
-        return vel, p, conv
-    
-    def time_integration(self):
-        self.T0, fl, T0_top = self.update_tempearture(self.t, self.T0,self.conv_T0,
-                                                       self.cell_conn)
-        
-        ### for moving box, modification needed
-        x0 = int(self.msh.shape[0]/2) - int(self.msh_v.shape[0]/2)
-        x1 = x0 + self.msh_v.shape[0]
-
-        y0 = int(self.msh.shape[1]/2) - int(self.msh_v.shape[1]/2)
-        y1 = y0 + self.msh_v.shape[1]
-
-        z0 = self.msh.shape[2] - self.msh_v.shape[2]
-        z1 = self.msh.shape[2]
-        
-        vel_local, p, conv  = self.update_velosity(self.vel0[x0:x1,y0:y1,z0:z1], 
-                                                self.p0[x0:x1,y0:y1,z0:z1],
-                                                self.conv0[x0:x1,y0:y1,z0:z1],
-                                                fl[x0:x1,y0:y1,z0:z1], 
-                                                T0_top[x0:x1,y0:y1, None],
-                                                self.cell_conn_local)
-
-    
-        self.vel0 = self.vel0.at[x0:x1,y0:y1,z0:z1].set(vel_local)
-        self.p0 = self.p0.at[x0:x1,y0:y1,z0:z1].set(p)
-        self.conv0 = self.conv0.at[x0:x1,y0:y1,z0:z1].set(conv)
-        
-        vel0_f = get_face_vels(self.vel0,self.msh.dX)
-        self.conv_T0 = div(self.T0[:,:,:,None]*self.eqn_T.rho_fn(self.T0[:,:,:,None]),vel0_f,self.msh.dX)[:,:,:,0]
-    
-        self.t += self.dt
 
     def clean_sols(self):
-        cfd_vtk_sols_folder = os.path.join(self.params['data_dir'], "vtk/cfd/sols")
+        cfd_vtk_sols_folder = os.path.join(self.args['data_dir'], "vtk/cfd/sols")
         os.makedirs(cfd_vtk_sols_folder, exist_ok=True)
         files_vtk = glob.glob(cfd_vtk_sols_folder + f"/*")
         for f in files_vtk:
@@ -455,18 +303,223 @@ class AM_3d():
 
     def inspect_sol(self, step, num_steps):
         print(f"\nstep {step} of {num_steps}, unix timestamp = {time.time()}")
-        print(f"T_max:{self.T0.max()}, vmax:{np.linalg.norm(self.vel0,axis=3).max()}")
-        if not np.all(np.isfinite(self.T0)):          
+        print(f"T_max:{self.T.max()}, vmax:{np.linalg.norm(self.vel,axis=3).max()}")
+        if not np.all(np.isfinite(self.T)):          
             raise ValueError(f"Found np.inf or np.nan in T0 - stop the program")
 
     def write_sols(self, step):
         print(f"\nWrite CFD sols to file...")
-        step = step // self.params['write_sol_interval']
-        self.meshio_mesh.cell_data['T'] = [onp.array(self.T0.reshape(-1, 1), dtype=onp.float32)]
-        self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel0.reshape(-1, 3), dtype=onp.float32)]
-        self.meshio_mesh.cell_data['p'] = [onp.array(self.p0.reshape(-1, 1), dtype=onp.float32)]
-        self.meshio_mesh.write(os.path.join(self.params['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
+        step = step // self.args['write_sol_interval']
+        self.meshio_mesh.cell_data['T'] = [onp.array(self.T.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel.reshape(-1, 3), dtype=onp.float32)]
+        self.meshio_mesh.cell_data['solidID'] = [onp.array(self.solidID.reshape(-1, 1), dtype=onp.float32)]
+        self.meshio_mesh.write(os.path.join(self.args['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
        
+
+class poisson():
+    def __init__(self, mesh, nonlinear=False, mu=None, mu_fn=None,source_fn=None,bc_type=None, bc_value=None):
+        self.msh = mesh
+        self.ndof = self.msh.cell_num
+
+        self.nonlinear = nonlinear
+        if self.nonlinear == False:
+            assert np.isscalar(
+                mu), 'For linear problem, a constant mu value is required'
+            self.mu = mu
+            self.laplace_kernel = self.linear_laplace_kernel
+        else:
+            assert mu_fn != None, 'For nonlinear problem, please input mu_fn: mu = mu_fn(U)'
+            self.mu_fn = mu_fn
+            self.laplace_kernel = self.nonlinear_laplace_kernel
+
+        if source_fn == None:
+            self.source_fn = lambda *args : 0
+        else:
+            self.source_fn = source_fn
+
+        self.set_bc(bc_type, bc_value)
+
+    def linear_laplace_kernel(self, Up, Unb):
+        return ((Unb - Up) / self.msh.D * self.mu * self.msh.dS).sum()
+
+    def nonlinear_laplace_kernel(self, Up, Unb):
+        # see Patankar, Suhas V. Numerical heat transfer and fluid flow. CRC press, 2018. page 44-47
+        mu = 2*self.mu_fn(Up)*self.mu_fn(Unb)/(self.mu_fn(Unb)+self.mu_fn(Up))
+        return ((Unb - Up) / self.msh.D * mu * self.msh.dS).sum()
+
+    def laplace(self, U):
+        U_cell_nb = U[self.msh.cell_conn]
+        return jax.vmap(self.laplace_kernel)(U_cell_nb[:, 0], U_cell_nb[:, 1:])
+
+    def source(self,U,*args):
+        return jax.vmap(self.source_fn)(U,*args)
+
+    def apply_BC_to_residual(self, U, residual):
+        flux = np.array([])
+        if self.bc_type != None:
+            for i in range(len(self.bc_type)):
+                if self.bc_type[i] == 0:
+                    if self.nonlinear == True:
+                        mu = self.mu_fn(self.bc_value[i])
+                    else:
+                        mu = self.mu
+                    flux = np.concatenate(
+                        (flux, mu * 2 *
+                         (self.bc_value[i] -
+                          U[self.msh.surf_cell[self.msh.surf_sets[i]]]) /
+                         self.msh.D[i] * self.msh.dS[i]))
+                if self.bc_type[i] == 1:
+                    flux = np.concatenate(
+                        (flux, self.bc_value[i] * np.abs(self.msh.dS[i])))
+            residual = residual.at[self.msh.surf_cell].add(-flux)
+        return residual
+
+    def compute_residual_kernel(self, U_cell_nb, *args):
+        Up = U_cell_nb[0]
+        Unb = U_cell_nb[1:]
+        return -self.laplace_kernel(Up, Unb) - self.source_fn(Up,*args)*self.msh.dV
+
+    def compute_residual(self, U, *args):
+        residual = -self.laplace(U) - self.source(U,*args)*self.msh.dV
+        residual = self.apply_BC_to_residual(U, residual)
+        return residual
+
+    def apply_BC_to_matrix(self, values):
+        value_Dirichlet = np.array([])
+        loc_Dirichlet = np.array([], dtype=int)
+        if self.bc_type != None:
+            for i in range(len(self.bc_type)):
+                if self.bc_type[i] == 0:
+                    if self.nonlinear == True:
+                        mu = self.mu_fn(self.bc_value[i])
+                    else:
+                        mu = self.mu + self.bc_value[i]*0.
+                    value_Dirichlet = np.concatenate(
+                        (value_Dirichlet,
+                         mu * 2 / self.msh.D[i] * self.msh.dS[i]))
+                    loc_Dirichlet = np.concatenate(
+                        (loc_Dirichlet, self.msh.surf_cell[self.msh.surf_sets[i]]))
+            values = values.at[loc_Dirichlet, 0].add(value_Dirichlet)
+        return values
+
+    def newton_update(self, U, *args):
+        def D_fn(cell_nb_sol, *args):
+            return jax.jacrev(self.compute_residual_kernel)(cell_nb_sol, *args)
+
+        vmap_fn = jax.vmap(D_fn)
+        values = vmap_fn(U[self.msh.cell_conn],*args)
+        self.values = self.apply_BC_to_matrix(values)
+        self.precond_values = ((self.msh.cell_conn == np.arange(self.msh.cell_num)[:,None])*self.values).sum(axis=1)
+
+    def compute_linearized_residual(self, U):
+        return (self.values * U[self.msh.cell_conn]).sum(axis=1)
+
+    def jacobiPreconditioner(self,U):
+        # return (1./self.values[:,0]*U)
+        return (1./self.precond_values*U)
+
+    def set_bc(self, bc_type, bc_value):
+        self.bc_type = bc_type
+        self.bc_value = bc_value
+
+
+class energy_eqn():
+    def __init__(self, args):
+        cp_fn = lambda T: args['cp'](T) + args['latent_heat'] / (args[
+            'Tl'] - args['Ts']) * (T > args['Ts']) * (T < args['Tl'])
+        fn = lambda T, T0, conv, Q: -args['rho'] * (T - T0) * cp_fn(
+            T0) / args['dt'] - args['rho'] * cp_fn(T0) * conv + Q
+        mu_fn = lambda T: args['k'](T)
+        self.step = poisson(mesh=args['mesh'],
+                            nonlinear='True',
+                            mu_fn=mu_fn,
+                            source_fn=fn)
+        self.bc_fn = None
+    
+    def update_BCs(self,*bc_args):
+        if self.bc_fn != None:
+            bc_types,bc_values = self.bc_fn(*bc_args)
+            self.BCs = [bc_types,bc_values]
+            self.step.set_bc(bc_types,bc_values)
+        
+
+    @partial(jax.jit, static_argnums=(0))
+    def update(self, T0, conv_T0, Q, bc_args, cell_conn):
+        self.step.msh.cell_conn = cell_conn
+        self.update_BCs(bc_args)
+        T, it = solver_nonlinear(self.step,
+                                 T0.flatten(),
+                                 conv_T0.flatten(),
+                                 Q.flatten(),
+                                 init=T0.flatten(),
+                                 precond=True)
+        return T.reshape(T0.shape), self.BCs, it
+
+
+class velosity_eqn():
+    def __init__(self, args):
+
+        self.dt = args['dt']
+        self.rho = args['rho']
+        fn = lambda u, u0, conv, grad_p, fl: -self.rho * (
+            u - u0) / self.dt - self.rho*conv - grad_p - 1e7 * self.rho * (
+                1 - fl)**2 / (fl**3 + 1e-3) * u
+        self.step = poisson(mesh=args['mesh_local'],
+                            nonlinear= False,
+                            mu=args['visco'],
+                            source_fn=fn)
+
+        source = lambda p, div_v: -div_v
+        self.poisson_for_p = poisson(mesh=args['mesh_local'],
+                                     mu=1.,
+                                     source_fn=source)
+
+        self.poisson_for_p.newton_update(np.zeros(self.poisson_for_p.ndof),
+                                         np.zeros(self.poisson_for_p.ndof))
+
+        self.bc_fn = None
+
+    def update_BCs(self,*bc_args):
+        if self.bc_fn != None:
+            self.vel_BCs,bc_types,bc_values = self.bc_fn(*bc_args) #vel_BCs: vector form for calculate face velosities;
+            return bc_types,bc_values
+
+    @partial(jax.jit, static_argnums=(0))
+    def update(self, vel0, conv0, grad_p0, fl, bc_args, cell_conn):
+        self.step.msh.cell_conn = cell_conn
+        # prediction step
+        vel = []
+        bc_types,bc_values = self.update_BCs(bc_args)
+        for i in range(0, 3):
+            self.step.set_bc(bc_types[i],bc_values[i])
+            vel_i = solver_linear(self.step,
+                        vel0[:, :, :, i].flatten(),
+                        conv0[:, :, :, i].flatten(),
+                        grad_p0[:, :, :, i].flatten(),
+                        fl.flatten(),
+                        tol=1e-10,
+                        precond=True).reshape(self.step.msh.shape)
+            vel.append(vel_i)
+        vel = np.stack((vel[0], vel[1], vel[2]),axis=3)
+
+        # correction step
+        u_f, v_f, w_f = get_face_vels(vel, self.step.msh.dX, self.vel_BCs)
+        div_vel = ((u_f[1:, :, :] - u_f[:-1, :, :]) / self.step.msh.dX[0] +
+                   (v_f[:, 1:, :] - v_f[:, :-1, :]) / self.step.msh.dX[1] +
+                   (w_f[:, :, 1:] - w_f[:, :, :-1]) /
+                   self.step.msh.dX[2]) / self.dt * self.rho 
+
+        p = solver_linear(self.poisson_for_p,
+                          div_vel.flatten(),
+                          tol=1e-10,
+                          update=False,
+                          precond=False)
+
+        p = p.reshape(self.step.msh.shape + [1])
+        vel = vel - self.dt * gradient(p, self.step.msh.dX) / self.rho
+        # vel_f = get_face_vels(vel,self.step.msh.dX,self.vel_BCs)
+        return vel, self.vel_BCs, grad_p0 + gradient(p, self.step.msh.dX)
+
 
 class uniform_mesh():
     def __init__(self, domain, N):
@@ -646,29 +699,39 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
     return dofs
 
 
-def solver_nonlinear(eqn,*args,init=None,tol=1e-5,max_it=5000):
+def solver_nonlinear(eqn,*args,init=None,tol=1e-5,max_it=50,relaxation=1.,precond=False):
 # solve nonlinear problems
 
-    def cond_fun(carry):
-        dofs,inc,it = carry
-        return (np.linalg.norm(inc)/np.linalg.norm(dofs) > tol) & (it < max_it)
+    if precond:
+        preconditoner = eqn.jacobiPreconditioner
+    else:
+        preconditoner = None
 
-    def body_fun(carry):
-        dofs,inc,it = carry
-        b = -eqn.compute_residual(dofs,*args)
-        eqn.newton_update(dofs,*args)
-        A_fn_linear = eqn.compute_linearized_residual
-        inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b)
-        dofs = dofs + inc
-        return (dofs,inc,it+1)
-    
     if init == None:
         dofs = np.zeros(eqn.ndof)
     else:
         dofs = init
+
+    b = -eqn.compute_residual(dofs,*args)
+    res_init = np.linalg.norm(b)
+
+    def cond_fun(carry):
+        dofs,b,it = carry
+        return (np.linalg.norm(b)/np.linalg.norm(res_init) > tol) & (it < max_it)
+
+    def body_fun(carry):
+        dofs,b,it = carry
+        eqn.newton_update(dofs,*args)
+        A_fn_linear = eqn.compute_linearized_residual
+        inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn_linear, b, M=preconditoner)
+        dofs = dofs + inc*relaxation
+        b = -eqn.compute_residual(dofs,*args)
+        return (dofs,b,it+1)
+    
+
     it = 0
     inc = np.ones_like(dofs)
-    dofs,inc,it = jax.lax.while_loop(cond_fun, body_fun, (dofs,inc,it))
+    dofs,b,it = jax.lax.while_loop(cond_fun, body_fun, (dofs,b,it))
 
     
-    return dofs
+    return dofs,it
