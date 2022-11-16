@@ -58,6 +58,8 @@ def get_flatten_fn(fn_sol, problem):
 
 
 def get_A_fn_linear_fn(dofs, fn):
+    """Not quite used.
+    """
     def A_fn_linear_fn(inc):
         primals, tangents = jax.jvp(fn, (dofs,), (inc,))
         return tangents
@@ -78,7 +80,7 @@ def get_A_fn_linear_fn_JFNK(dofs, fn):
 
 
 def operator_to_matrix(operator_fn, problem):
-    """Only used for debugging purpose.
+    """Only used for when debugging.
     Can be used to print the matrix, check the conditional number, etc.
     """
     J = jax.jacfwd(operator_fn)(np.zeros(problem.num_total_nodes*problem.vec))
@@ -111,7 +113,8 @@ def test_jacobi_precond(problem, jacobi, A_fn):
  
 
 def linear_guess_solve(problem, A_fn, precond):
-    b = np.zeros((problem.num_total_nodes, problem.vec))
+    # b = np.zeros((problem.num_total_nodes, problem.vec))
+    b = problem.body_force + problem.neumann
     b = assign_bc(b, problem)
     pc = get_jacobi_precond(jacobi_preconditioner(problem)) if precond else None
     dofs, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, x0=b, M=pc, tol=1e-10, atol=1e-10, maxiter=10000)
@@ -119,8 +122,7 @@ def linear_guess_solve(problem, A_fn, precond):
 
 
 def linear_incremental_solver(problem, res_fn, A_fn, dofs, precond):
-    """
-    Lift solver
+    """Lift solver
     dofs must already satisfy Dirichlet boundary conditions
     """
     b = -res_fn(dofs)
@@ -131,9 +133,9 @@ def linear_incremental_solver(problem, res_fn, A_fn, dofs, precond):
 
 
 def compute_residual_val(res_fn, dofs):
-   res_vec = res_fn(dofs)
-   res_val = np.linalg.norm(res_vec)
-   return res_val
+    res_vec = res_fn(dofs)
+    res_val = np.linalg.norm(res_vec)
+    return res_val
 
 
 def get_A_fn(problem):
@@ -151,7 +153,7 @@ def get_A_fn(problem):
     return compute_linearized_residual
 
 
-def solver_row_elimination(problem, linear=False, precond=True):
+def solver_row_elimination(problem, linear=False, precond=True, initial_guess=None):
     """Imposing Dirichlet B.C. with "row elimination" method.
     """
     print(f"Calling the row elimination solver for imposing Dirichlet B.C.")
@@ -175,7 +177,11 @@ def solver_row_elimination(problem, linear=False, precond=True):
         dofs = assign_bc(dofs, problem)
         dofs = linear_incremental_solver(problem, res_fn, A_fn, dofs, precond)
     else:
-        dofs = linear_guess_solve(problem, A_fn, precond)
+        if initial_guess is None:
+            dofs = linear_guess_solve(problem, A_fn, precond)
+        else:
+            dofs = initial_guess.reshape(-1)
+
         res_val = compute_residual_val(res_fn, dofs)
         print(f"Before, res l_2 = {res_val}") 
         tol = 1e-6
@@ -402,14 +408,14 @@ def solver_lagrange_multiplier(problem, linear=False):
 
 
 ################################################################################
-# General solver
+# General
 
-def solver(problem, linear=False, precond=True):
+def solver(problem, linear=False, precond=True, initial_guess=None):
     """periodic B.C. is a special form of adding a linear constraint. 
     Lagrange multiplier seems to be convenient to impose this constraint.
     """
     if problem.periodic_bc_info is None:
-        return solver_row_elimination(problem, linear, precond)
+        return solver_row_elimination(problem, linear, precond, initial_guess)
     else:
         return solver_lagrange_multiplier(problem, linear)
 
