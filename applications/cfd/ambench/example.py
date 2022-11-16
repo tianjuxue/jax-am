@@ -24,8 +24,8 @@ def integrator():
     data_dir = os.path.join(crt_file_path, 'data')
 
     domain_x = 3.e-3
-    domain_y = 3.e-4
-    domain_z = 3.e-4
+    domain_y = 4.e-4
+    domain_z = 4.e-4
     Nx = 300
     Ny = 100 
     Nz = 100 

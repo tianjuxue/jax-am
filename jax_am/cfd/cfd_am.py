@@ -188,7 +188,7 @@ class AM_3d():
 
     def update_convective_terms(self, T, vel, vel_BCs):
         vel_f = get_face_vels(vel, self.msh.dX, vel_BCs)
-        conv_T = div(T, vel_f, self.msh.dX,theta=0.)
+        conv_T = div(T, vel_f, self.msh.dX)
 #         conv = div(vel, vel_f, self.msh.dX, BCs=vel_BCs)
         conv = div(vel, vel_f, self.msh.dX)
         return conv_T, conv
