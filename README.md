@@ -97,6 +97,13 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
     <em >Linear static analysis of a bracket.</em>
 </p>
 
+<p align="middle">
+  <img src="docs/materials/polycrystal_grain.gif" width="350" />
+  <img src="docs/materials/polycrystal_stress.gif" width="350" /> 
+</p>
+<p align="middle">
+    <em >Crystal plasticity: grain structure (left) and stress-xx (right).</em>
+</p>
 
 <p align="middle">
   <img src="docs/materials/to.gif" width="600" />
