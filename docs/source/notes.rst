@@ -13,6 +13,6 @@ For educational purpose, we will post notes on several topics. We have already i
 
 * Finite Element Method (FEM)
 
-  * Crystal plasticity
+  * :download:`A note on crystal plasticity <../notes/CPFEM.pdf>`
 
 * Differential Equation Constrained Optimization
