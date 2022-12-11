@@ -77,7 +77,7 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
   - Heat equation
   - Linear elasticity
   - Hyperelasticity
-  - Plasticity
+  - Plasticity (macro and crystal plasticity)
 - Differentiable simulation for solving inverse/design problems __without__ human deriving sensitivities, e.g.,
   - Toplogy optimization
   - Optimal thermal control
