@@ -58,9 +58,9 @@ Contents
 
    installation
    quick_start
-   equations
-   api
+   notes
    tutorial
+   api
    about
 
 Indices and tables

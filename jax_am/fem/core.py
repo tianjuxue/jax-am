@@ -5,6 +5,7 @@ from jax.experimental.sparse import BCOO
 import scipy
 import sys
 import time
+import functools
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, List, Union
 
@@ -42,8 +43,6 @@ class FEM:
         The dimension of the problem.
     ele_type : str
         Element type
-    lag_order : int
-        Lagrangian shape function order
     dirichlet_bc_info : [location_fns, vecs, value_fns]
         location_fns : List[Callable]
             Callable : a function that inputs a point and returns if the point satisfies the location condition
@@ -79,8 +78,7 @@ class FEM:
     mesh: Mesh
     vec: int
     dim: int
-    ele_type: str = 'hexahedron'
-    lag_order: int = 1
+    ele_type: str = 'HEX8'
     dirichlet_bc_info: Optional[List[Union[List[Callable], List[int], List[Callable]]]] = None 
     periodic_bc_info: Optional[List[Union[List[Callable], List[Callable], List[Callable], List[int]]]] = None
     neumann_bc_info: Optional[List[Union[List[Callable], List[Callable]]]] = None
@@ -98,9 +96,9 @@ class FEM:
         start = time.time()
         print(f"Start timing - Compute shape function values, gradients, etc.")
 
-        self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(self.ele_type, self.lag_order)
+        self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(self.ele_type)
         self.face_shape_vals, self.face_shape_grads_ref, self.face_quad_weights, self.face_normals, self.face_inds \
-        = get_face_shape_vals_and_grads(self.ele_type, self.lag_order)
+        = get_face_shape_vals_and_grads(self.ele_type)
         self.num_quads = self.shape_vals.shape[0]
         self.num_nodes = self.shape_vals.shape[1]
         self.num_faces = self.face_shape_vals.shape[0]
@@ -453,6 +451,18 @@ class FEM:
         return [mass_internal_vars, laplace_internal_vars]        
 
     def split_and_compute_cell(self, cells_sol, np_version, jac_flag, **internal_vars):
+        def value_and_jacrev(f, x):
+            y, pullback = jax.vjp(f, x)
+            basis = np.eye(len(y.reshape(-1)), dtype=y.dtype).reshape(-1, *y.shape)
+            jac, = jax.vmap(pullback)(basis)
+            return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes, self.vec)
+
+        def value_and_jacfwd(f, x):
+            pushfwd = functools.partial(jax.jvp, f, (x,))
+            basis = np.eye(len(x.reshape(-1)), dtype=x.dtype).reshape(-1, *x.shape)
+            y, jac = jax.vmap(pushfwd, out_axes=(None, -1))((basis,))
+            return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes, self.vec)
+
         def get_kernel_fn_cell():
             def kernel(cell_sol, cell_shape_grads, cell_JxW, cell_v_grads_JxW, cell_mass_internal_vars, cell_laplace_internal_vars):
                 if hasattr(self, 'get_mass_map'):
@@ -470,7 +480,8 @@ class FEM:
                 return laplace_val + mass_val
 
             def kernel_jac(cell_sol, *args):
-                return jax.jacfwd(kernel)(cell_sol, *args)
+                kernel_partial = lambda cell_sol: kernel(cell_sol, *args)
+                return value_and_jacfwd(kernel_partial, cell_sol) # kernel(cell_sol, *args), jax.jacfwd(kernel)(cell_sol, *args)
 
             return kernel, kernel_jac
 
@@ -483,20 +494,39 @@ class FEM:
             num_cuts = len(self.cells)
         batch_size = len(self.cells) // num_cuts
         input_collection = [cells_sol, self.shape_grads, self.JxW, self.v_grads_JxW, *kernal_vars]
-        values = []
-        for i in range(num_cuts):
-            if i < num_cuts - 1:
-                input_col = jax.tree_map(lambda x: x[i*batch_size:(i + 1)*batch_size], input_collection)
-            else:
-                input_col = jax.tree_map(lambda x: x[i*batch_size:], input_collection)
 
-            val = vmap_fn(*input_col)
-            values.append(val)
+        if jac_flag:
+            values = []
+            jacs = []
+            for i in range(num_cuts):
+                if i < num_cuts - 1:
+                    input_col = jax.tree_map(lambda x: x[i*batch_size:(i + 1)*batch_size], input_collection)
+                else:
+                    input_col = jax.tree_map(lambda x: x[i*batch_size:], input_collection)
 
-        # np_version set to jax.numpy allows for auto diff, but uses GPU memory
-        # np_version set to ordinary numpy saves GPU memory, but can't use auto diff 
-        values = np_version.vstack(values)
-        return values
+                val, jac = vmap_fn(*input_col)
+
+                values.append(val)
+                jacs.append(jac)
+
+            # np_version set to jax.numpy allows for auto diff, but uses GPU memory
+            # np_version set to ordinary numpy saves GPU memory, but can't use auto diff 
+            values = np_version.vstack(values)
+            jacs = np_version.vstack(jacs)
+            return values, jacs
+        else:
+            values = []
+            for i in range(num_cuts):
+                if i < num_cuts - 1:
+                    input_col = jax.tree_map(lambda x: x[i*batch_size:(i + 1)*batch_size], input_collection)
+                else:
+                    input_col = jax.tree_map(lambda x: x[i*batch_size:], input_collection)
+
+                val = vmap_fn(*input_col)
+                values.append(val)
+            values = np_version.vstack(values)
+            return values
+
 
     def compute_face(self, cells_sol, np_version, jac_flag):
         def get_kernel_fn_face(cauchy_map): 
@@ -533,31 +563,36 @@ class FEM:
 
         return values, selected_cells
 
-    def compute_residual_vars(self, sol, **internal_vars):
-        res = np.zeros_like(sol)
-        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
-        weak_form = self.split_and_compute_cell(cells_sol, np, False, **internal_vars) # (num_cells, num_nodes, vec)
+    def compute_residual_vars_helper(self, sol, weak_form):
+        res = np.zeros((self.num_total_nodes, self.vec))
         weak_form = weak_form.reshape(-1, self.vec) # (num_cells*num_nodes, vec)
         res = res.at[self.cells.reshape(-1)].add(weak_form) 
 
         if self.cauchy_bc_info is not None:
+            cells_sol = sol[self.cells]
             values, selected_cells = self.compute_face(cells_sol, np, False)
             values = values.reshape(-1, self.vec)
             res = res.at[selected_cells.reshape(-1)].add(values) 
 
         res = res - self.body_force - self.neumann
-        return res 
+        return res
 
+    def compute_residual_vars(self, sol, **internal_vars):
+        print(f"Compute cell residual...")
+        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
+        weak_form = self.split_and_compute_cell(cells_sol, np, False, **internal_vars) # (num_cells, num_nodes, vec)
+        return self.compute_residual_vars_helper(sol, weak_form)
+    
     def compute_residual(self, sol):
         """Child class should override if internal variables exist
         """
         return self.compute_residual_vars(sol)
 
     def newton_vars(self, sol, **internal_vars):
-        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
         print(f"Compute cell Jacobian...")
-        # (num_cells, num_nodes, vec, num_nodes, vec)
-        cells_jac = self.split_and_compute_cell(cells_sol, onp, True, **internal_vars)
+        cells_sol = sol[self.cells] # (num_cells, num_nodes, vec)
+        # (num_cells, num_nodes, vec), (num_cells, num_nodes, vec, num_nodes, vec)
+        weak_form, cells_jac = self.split_and_compute_cell(cells_sol, onp, True, **internal_vars)
         V = cells_jac.reshape(-1)
         inds = (self.vec * self.cells[:, :, None] + onp.arange(self.vec)[None, None, :]).reshape(len(self.cells), -1)
         I = onp.repeat(inds[:, :, None], self.num_nodes*self.vec, axis=2).reshape(-1)
@@ -575,6 +610,8 @@ class FEM:
             self.I = onp.hstack((self.I, I_face))
             self.J = onp.hstack((self.J, J_face))
             self.V = onp.hstack((self.V, V_face))
+
+        return self.compute_residual_vars_helper(sol, weak_form) 
 
     def newton_update(self, sol):
         """Child class should override if internal variables exist

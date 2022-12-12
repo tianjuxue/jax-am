@@ -301,7 +301,7 @@ def walltime(data_dir=None):
     return decorate
 
 
-def make_video(pf_args):
+def make_video(data_dir):
     # The command -pix_fmt yuv420p is to ensure preview of video on Mac OS is enabled
     # https://apple.stackexchange.com/questions/166553/why-wont-video-from-ffmpeg-show-in-quicktime-imovie-or-quick-preview
     # The command -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" is to solve the following "not-divisible-by-2" problem
@@ -309,8 +309,8 @@ def make_video(pf_args):
     # -y means always overwrite
 
     # TODO
-    os.system(f'ffmpeg -y -framerate 10 -i {pf_args["data_dir"]}/png/tmp/u.%04d.png -pix_fmt yuv420p -vf \
-               "crop=trunc(iw/2)*2:trunc(ih/2)*2" {pf_args["data_dir"]}/mp4/test.mp4')
+    os.system(f'ffmpeg -y -framerate 10 -i {data_dir}/png/tmp/u.%04d.png -pix_fmt yuv420p -vf \
+               "crop=trunc(iw/2)*2:trunc(ih/2)*2" {data_dir}/mp4/test.mp4')
 
 
 if __name__=="__main__":

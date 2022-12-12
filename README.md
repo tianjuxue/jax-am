@@ -15,6 +15,10 @@ JAX-AM is a collection of several numerical tools, currently including __Discret
 
 Our vision is to share with the AM community a __free, open-source__ (under the GPL-3.0 License) software that facilitates the relevant computational research. In the JAX ecosystem, we hope to emphasize the potential of JAX for scientific computing. At the same time, AI-enabled research in AM can be made easy with JAX-AM. 
 
+Authors:
+* [Tianju Xue](https://tianjuxue.github.io/)
+* [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
+
 :fire: <u>***Join us for the development of JAX-AM!***</u> :rocket:
 
 ## Discrete Element Method (DEM)
@@ -73,7 +77,7 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
   - Heat equation
   - Linear elasticity
   - Hyperelasticity
-  - Plasticity
+  - Plasticity (macro and crystal plasticity)
 - Differentiable simulation for solving inverse/design problems __without__ human deriving sensitivities, e.g.,
   - Toplogy optimization
   - Optimal thermal control
@@ -93,6 +97,13 @@ FEM is a powerful tool for thermal-mechanical analysis in AM. We support the fol
     <em >Linear static analysis of a bracket.</em>
 </p>
 
+<p align="middle">
+  <img src="docs/materials/polycrystal_grain.gif" width="350" />
+  <img src="docs/materials/polycrystal_stress.gif" width="350" /> 
+</p>
+<p align="middle">
+    <em >Crystal plasticity: grain structure (left) and stress-xx (right).</em>
+</p>
 
 <p align="middle">
   <img src="docs/materials/to.gif" width="600" />
