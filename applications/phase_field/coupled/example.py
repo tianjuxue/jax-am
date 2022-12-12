@@ -54,9 +54,15 @@ def coupled_integrator():
 
     mesh = mesh3d([pf_args['domain_x'], pf_args['domain_y'], pf_args['domain_z']], 
                   [pf_args['Nx'], pf_args['Ny'], pf_args['Nz']])
-    # mesh_local = mesh
-    mesh_local = mesh3d([0.75*pf_args['domain_x'], 0.5*pf_args['domain_y'], 0.4*pf_args['domain_z']], 
-                        [round(0.75*pf_args['Nx']), round(0.5*pf_args['Ny']), round(0.4*pf_args['Nz'])])
+    
+    Nx_local = round(0.75*pf_args['Nx'])
+    Ny_local = round(0.5*pf_args['Ny'])
+    Nz_local = round(0.5*pf_args['Nz'])
+    mesh_local = mesh3d([Nx_local/pf_args['Nx']*pf_args['domain_x'],
+                         Ny_local/pf_args['Ny']*pf_args['domain_y'],
+                         Nz_local/pf_args['Nz']*pf_args['domain_z']], 
+                    [Nx_local,Ny_local,Nz_local])
+    
     meshio_mesh = box_mesh(pf_args['Nx'], pf_args['Ny'], pf_args['Nz'], pf_args['domain_x'], pf_args['domain_y'], pf_args['domain_z'])
 
     cfd_args = cfd_parse(os.path.join(crt_file_path, 'cfd_params.json'))
@@ -64,6 +70,9 @@ def coupled_integrator():
     cfd_args['mesh_local'] = mesh_local
     cfd_args['cp'] = lambda T: (0.2441*np.clip(T,300,1563)+338.39) 
     cfd_args['k'] = lambda T: 0.0163105*np.clip(T,300,1563)+4.5847
+    cfd_args['latent_heat'] = 270000.
+    cfd_args['heat_source'] = 0
+    
     cfd_args['data_dir'] = data_dir
     cfd_args['meshio_mesh'] = meshio_mesh
     assert cfd_args['dt'] >= pf_args['dt'], f"CFD time step must be greater than PF for intepolation"
@@ -78,10 +87,10 @@ def coupled_integrator():
     cfd_ts = np.arange(0., cfd_args['t_OFF'] + 1e-10, cfd_args['dt'])
     cfd_step = 0
     cfd_solver.write_sols(cfd_step)    
-    T_past = cfd_solver.T0
+    T_past = cfd_solver.T[:,:,:,0]
     walltime()(cfd_solver.time_integration)()
 
-    T_future = cfd_solver.T0
+    T_future = cfd_solver.T[:,:,:,0]
     t_cfd = cfd_args['dt']
     cfd_step += 1
 
@@ -93,7 +102,7 @@ def coupled_integrator():
         if t_pf > t_cfd + cfd_args['dt']:
             walltime()(cfd_solver.time_integration)()
             T_past = T_future
-            T_future = cfd_solver.T0
+            T_future = cfd_solver.T[:,:,:,0]
             t_cfd += cfd_args['dt']
             cfd_step += 1
             if cfd_step % cfd_args['check_sol_interval'] == 0:
