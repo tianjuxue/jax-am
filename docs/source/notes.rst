@@ -13,6 +13,8 @@ For educational purpose, we will post notes on several topics. We have already i
 
 * Phase Field Method (PFM)
 
+  * :download:`A short note on phase-field method <../notes/PF.pdf>`
+
 * Finite Element Method (FEM)
 
   * :download:`A note on crystal plasticity <../notes/CPFEM.pdf>`
