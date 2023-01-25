@@ -12,8 +12,7 @@ def phase_field(polycrystal, pf_args):
     h_x, h_y, h_z = polycrystal.mesh_h_xyz
 
     def update_anisotropy_helper(edges):
-        edge_directions = edges.reshape(-1, pf_args['dim'])
-        edge_directions = np.repeat(edge_directions[:, None, :], pf_args['num_oris'], axis=1) # (num_edges, num_oris, dim)
+        edge_directions = edges.reshape(-1, pf_args['num_oris'], pf_args['dim']) # (num_edges, num_oris, dim)
         unique_grain_directions = polycrystal.unique_grain_directions # (num_directions_per_cube, num_oris, dim)
         cosines = np.sum(unique_grain_directions[None, :, :, :] * edge_directions[:, None, :, :], axis=-1) \
                   / (np.linalg.norm(edge_directions, axis=-1)[:, None, :])
@@ -24,6 +23,21 @@ def phase_field(polycrystal, pf_args):
         anisotropy_term = 1. + pf_args['anisotropy'] * (np.cos(angles)**4 + np.sin(angles)**4) # (num_edges, num_oris)
         anisotropy_term = anisotropy_term.reshape((edges.shape[0], edges.shape[1], edges.shape[2], pf_args['num_oris']))
         return anisotropy_term
+
+
+    def update_anisotropy_helper(edges):
+        edge_directions = edges.reshape(-1, pf_args['num_oris'], pf_args['dim']) # (num_edges, num_oris, dim)
+        unique_grain_directions = polycrystal.unique_grain_directions # (num_directions_per_cube, num_oris, dim)
+        cosines = np.sum(unique_grain_directions[None, :, :, :] * edge_directions[:, None, :, :], axis=-1) \
+                  / (np.linalg.norm(edge_directions, axis=-1)[:, None, :])
+        angles = np.arccos(cosines) 
+        angles = np.where(np.isfinite(angles), angles, 0.)
+        angles = np.where(angles < np.pi/2., angles, np.pi - angles)
+        angles = np.min(angles, axis=1)
+        anisotropy_term = 1. + pf_args['anisotropy'] * (np.cos(angles)**4 + np.sin(angles)**4) # (num_edges, num_oris)
+        anisotropy_term = anisotropy_term.reshape((edges.shape[0], edges.shape[1], edges.shape[2], pf_args['num_oris']))
+        return anisotropy_term
+
 
     def local_energy_fn(eta, zeta):
         gamma = 1
@@ -52,32 +66,16 @@ def phase_field(polycrystal, pf_args):
         eta_pos_z = np.concatenate((eta_xyz[1:, :, :, :], eta_xyz[-1:, :, :, :]), axis=0)
 
         if pf_args['anisotropy'] > 0.:
-            # TODO: Make the code concise
-            # https://github.com/google/jax-cfd/blob/8eff9c47bdc7fb19b6453db94ca65f6be64d91f6/jax_cfd/base/finite_differences.py#L74
-            centroids = polycrystal.centroids
-            centroids_xyz = np.reshape(centroids, (pf_args['Nz'], pf_args['Ny'], pf_args['Nx'], pf_args['dim']))
-            edges_x = centroids_xyz[:, :, 1:, :] - centroids_xyz[:, :, :-1, :]
-            edges_y = centroids_xyz[:, 1:, :, :] - centroids_xyz[:, :-1, :, :] 
-            edges_z = centroids_xyz[1:, :, :, :] - centroids_xyz[:-1, :, :, :]
-            aniso_x = update_anisotropy_helper(edges_x)
-            aniso_y = update_anisotropy_helper(edges_y)
-            aniso_z = update_anisotropy_helper(edges_z)
-
-            aniso_neg_x = np.pad(aniso_x, ((0, 0), (0, 0), (1, 0), (0, 0)))
-            aniso_pos_x = np.pad(aniso_x, ((0, 0), (0, 0), (0, 1), (0, 0)))
-            aniso_neg_y = np.pad(aniso_y, ((0, 0), (1, 0), (0, 0), (0, 0)))
-            aniso_pos_y = np.pad(aniso_y, ((0, 0), (0, 1), (0, 0), (0, 0)))
-            aniso_neg_z = np.pad(aniso_z, ((1, 0), (0, 0), (0, 0), (0, 0)))
-            aniso_pos_z = np.pad(aniso_z, ((0, 1), (0, 0), (0, 0), (0, 0)))
+            aniso = update_anisotropy_helper(np.stack((eta_pos_x - eta_neg_x, eta_pos_y - eta_neg_y, eta_pos_z - eta_neg_z), axis=-1))[..., None]
             print("End of compute_anisotropy...")
         else:
-            aniso_neg_x, aniso_pos_x, aniso_neg_y, aniso_pos_y, aniso_neg_z, aniso_pos_z = 1., 1., 1., 1., 1., 1
+            aniso = 1.
 
         # See https://en.wikipedia.org/wiki/Finite_difference "Second-order central"
-        laplace_xyz = -(np.stack((((eta_pos_x - eta_xyz)*aniso_neg_x + (eta_neg_x - eta_xyz)*aniso_pos_x)/h_x**2, 
-                                  ((eta_pos_y - eta_xyz)*aniso_neg_y + (eta_neg_y - eta_xyz)*aniso_pos_y)/h_y**2, 
-                                  ((eta_pos_z - eta_xyz)*aniso_neg_z + (eta_neg_z - eta_xyz)*aniso_pos_z)/h_z**2), axis=-1) *
-                                   pf_args['kappa_g'] * pf_args['ad_hoc'])
+        laplace_xyz = -(np.stack((((eta_pos_x - eta_xyz) + (eta_neg_x - eta_xyz))/h_x**2, 
+                                  ((eta_pos_y - eta_xyz) + (eta_neg_y - eta_xyz))/h_y**2, 
+                                  ((eta_pos_z - eta_xyz) + (eta_neg_z - eta_xyz))/h_z**2), axis=-1)
+                                   * aniso * pf_args['kappa_g'] * pf_args['ad_hoc'])
 
         assert laplace_xyz.shape == (pf_args['Nz'], pf_args['Ny'], pf_args['Nx'], pf_args['num_oris'], pf_args['dim'])
         laplace = np.sum(laplace_xyz.reshape(-1, pf_args['num_oris'], pf_args['dim']), axis=-1)
@@ -141,7 +139,7 @@ class PFSolver:
     def stepper(self, state_pre, t_crt, ode_params):
         T, = ode_params
         state, y = explicit_euler(state_pre, t_crt, self.state_rhs, ode_params) 
-        state = self.force_eta_fn(state, T)
+        # state = self.force_eta_fn(state, T)
         return state, state[0]
         
     def ini_cond(self):
