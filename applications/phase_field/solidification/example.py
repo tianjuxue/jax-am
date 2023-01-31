@@ -15,7 +15,7 @@ from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 def get_T_fn(polycrystal, pf_args):

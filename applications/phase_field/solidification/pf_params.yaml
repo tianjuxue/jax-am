@@ -1,4 +1,8 @@
 ###
+# Identifier (used as seed of the random number generator to compute initial seed positions in Neper teselllation)
+id: 1
+
+###
 # Dimension
 dim: 3
 

@@ -72,6 +72,9 @@ def coupled_integrator():
     cfd_args['k'] = lambda T: 0.0163105*np.clip(T,300,1563)+4.5847
     cfd_args['latent_heat'] = 270000.
     cfd_args['heat_source'] = 0
+
+    # TODO: This parameter is useless if we use surface heat source
+    cfd_args['phi'] = 0.
     
     cfd_args['data_dir'] = data_dir
     cfd_args['meshio_mesh'] = meshio_mesh
@@ -85,6 +88,7 @@ def coupled_integrator():
 
     cfd_solver = AM_3d(cfd_args)
     cfd_ts = np.arange(0., cfd_args['t_OFF'] + 1e-10, cfd_args['dt'])
+    cfd_solver.clean_sols()
     cfd_step = 0
     cfd_solver.write_sols(cfd_step)    
     T_past = cfd_solver.T[:,:,:,0]
