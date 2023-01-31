@@ -33,6 +33,23 @@ def get_GC_values(f, BCs, dX):
         ghost_cell(BCs[0][5], BCs[1][5], dX[2], f[:, :, [-1]])
     ]
 
+def laplace(f,f_gc,miu,dX,BCs=None):
+    if BCs == None:
+        BCs = [[1, 1, 1, 1, 1, 1], [0., 0., 0., 0., 0., 0.]]
+        f_gc = get_GC_values(f, BCs, dX)
+    if np.isscalar(miu):
+        dif = ((np.diff(f,axis=0,append=f_gc[1]) - np.diff(f,axis=0,prepend=f_gc[0]))/dX[0]*dX[1]*dX[2] +
+               (np.diff(f,axis=1,append=f_gc[3]) - np.diff(f,axis=1,prepend=f_gc[2]))/dX[1]*dX[2]*dX[0] +
+               (np.diff(f,axis=2,append=f_gc[5]) - np.diff(f,axis=2,prepend=f_gc[4]))/dX[2]*dX[0]*dX[1])*miu
+    else:
+        dif = ((np.diff(f,axis=0,append=f_gc[1])*miu[0][1:,:,:] 
+                    - np.diff(f,axis=0,prepend=f_gc[0])*miu[0][:-1,:,:])/dX[0]*dX[1]*dX[2] +
+               (np.diff(f,axis=1,append=f_gc[3])*miu[1][:,1:,:] 
+                    - np.diff(f,axis=1,prepend=f_gc[2])*miu[1][:,:-1,:])/dX[1]*dX[2]*dX[0] +
+               (np.diff(f,axis=2,append=f_gc[5])*miu[2][:,:,1:] 
+                    - np.diff(f,axis=2,prepend=f_gc[4])*miu[2][:,:,:-1])/dX[2]*dX[0]*dX[1])
+    return dif
+
 def div(f, vel_f, dX, theta=0.125, BCs=None):
     if BCs == None:
         BCs = [[1, 1, 1, 1, 1, 1], [0., 0., 0., 0., 0., 0.]]
@@ -125,20 +142,35 @@ def get_face_vel_component(vel, dX, axis=0, BCs=None):
 class AM_3d():
     def __init__(self, args):
         self.args = args
+        self.default_args()
         self.msh = args['mesh']
         self.msh_local = args['mesh_local']
         self.meshio_mesh = args['meshio_mesh']
         self.t = 0.
         self.eqn_T_init(args)
         self.eqn_V_init(args)
+        self.clean_sols()
+        
+    def default_args(self):
+        if 'h' not in self.args:
+            self.args['h'] = 0.
+        if 'stefan_boltzmann' not in self.args:
+            self.args['stefan_boltzmann'] = 5.67e-8
+        if 'emissivity' not in self.args:
+            self.args['emissivity'] = 0.
+         
 
     def time_integration(self):
-        Q = self.get_body_heat_source(self.t)
+        if self.args['heat_source'] == 1:
+            Q = self.get_body_heat_source(self.t)
+        else:
+            Q = self.T*0.
         self.T, T_BCs, _ = self.eqn_T.update(self.T, self.conv_T, Q,
-                                             self.t, self.cell_conn)
+                                             bc_args = (self.t,self.T[:,:,-1,:]), cell_conn = self.cell_conn)
         fl0 = self.fluid_frac(self.T)
 
-        self.solidID += fl0
+#         self.solidID += fl0
+        self.solidID = np.maximum(self.solidID,fl0)
 
         x0, x1, y0, y1, z0, z1 = self.get_moving_box_boundary(self.t)
 
@@ -155,15 +187,43 @@ class AM_3d():
         self.conv = self.conv.at[x0:x1, y0:y1, z0:z1].set(conv)
         self.conv_T = self.conv_T.at[x0:x1, y0:y1, z0:z1].set(conv_T)
         self.t += self.args['dt']
+        
+# #### iterative scheme as a comparsion with the Non-interative scheme (explicit convection)       
+#     def time_integration_iter(self,it=10):
+#         Q = self.get_body_heat_source(self.t)
+        
+#         for i in range(it):
+#             T, T_BCs, _ = self.eqn_T.update(self.T, self.conv_T, Q,
+#                                                  self.t, self.cell_conn)
+#             fl0 = self.fluid_frac(T)
+
+#             self.solidID += fl0
+
+#             x0, x1, y0, y1, z0, z1 = self.get_moving_box_boundary(self.t)
+
+#             vel, vel_BCs, grad_p0 = self.eqn_V.update(
+#                 self.vel[x0:x1, y0:y1, z0:z1], self.conv[x0:x1, y0:y1, z0:z1],
+#                 self.grad_p0[x0:x1, y0:y1, z0:z1], fl0[x0:x1, y0:y1, z0:z1],
+#                 T[x0:x1, y0:y1, z0:z1], self.cell_conn_local)
+
+#             conv_T, conv = self.update_convective_terms(T[x0:x1, y0:y1, z0:z1], vel, vel_BCs)
+            
+#             self.grad_p0 = self.grad_p0.at[x0:x1, y0:y1, z0:z1].set(grad_p0)
+#             self.conv = self.conv.at[x0:x1, y0:y1, z0:z1].set(conv)
+#             self.conv_T = self.conv_T.at[x0:x1, y0:y1, z0:z1].set(conv_T)
+
+#         self.vel = self.vel.at[x0:x1, y0:y1, z0:z1].set(vel)
+#         self.T = T
+#         self.t += self.args['dt']
 
     def get_body_heat_source(self, t):
         def Gaussian_cylinder(xl, yl, zl, P, xc, yc, zc):
             eta = self.args['eta']
             r = self.args['rb']
-            d = self.args['phi'] * P / self.args['speed']
+            d = self.args['phi'] * P / self.args['speed'] / self.args['rb']**2
             Q_laser = 2 * P * eta / d / np.pi / r**2 * np.exp(-2 * (
                 (xc - xl)**2 + (yc - yl)**2) / r**2)
-            Q_laser = Q_laser * ((zl - zc) <= d)* (self.args['heat_source'] == 1)
+            Q_laser = Q_laser * ((zl - zc) <= d)
             return Q_laser
 
         xl, yl, zl, P = self.toolpath(t)
@@ -178,6 +238,7 @@ class AM_3d():
         x1 = x0 + self.msh_local.shape[0]
 
         y0 = round(yl / self.msh.dX[1]) - round(self.msh_local.shape[1] / 2)
+        y0 = np.clip(y0,0,self.msh.shape[1]-self.msh_local.shape[1])
         y1 = y0 + self.msh_local.shape[1]
 
         z0 = round(zl / self.msh.dX[2]) - self.msh_local.shape[2]
@@ -199,7 +260,7 @@ class AM_3d():
         self.cell_conn = np.copy(args['mesh'].cell_conn)
 
         self.T = np.zeros(args['mesh'].shape + [1]) + args['T_ref']
-        self.solidID = np.zeros(args['mesh'].shape + [1],dtype=bool)
+        self.solidID = np.zeros(args['mesh'].shape + [1])
         self.conv_T = self.T * 0.
         self.Q = self.T * 0.
 
@@ -266,7 +327,11 @@ class AM_3d():
 
             return q_laser
 
-        def energe_bc(t):
+        def energe_bc(args):
+            t,T_top = args
+            q_conv = self.args['h']*(T_top-self.args['T_ref'])
+            q_rad = self.args['stefan_boltzmann']*self.args['emissivity']*(T_top**4-self.args['T_ref']**4)
+            q = -q_conv - q_rad
             bc_type = [1, 1, 1, 1, 1, 1]
             bc_values = [
                 np.zeros(self.msh.surf_set_num[0]),
@@ -274,8 +339,10 @@ class AM_3d():
                 np.zeros(self.msh.surf_set_num[2]),
                 np.zeros(self.msh.surf_set_num[3]),
                 np.zeros(self.msh.surf_set_num[4]),
-                np.zeros(self.msh.surf_set_num[5])
+                q.flatten()
             ]
+
+
 
             if self.args['heat_source'] == 0:
                 xc = self.msh.surface[self.msh.surf_sets[-1]][:, 0]
@@ -314,8 +381,8 @@ class AM_3d():
         self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel.reshape(-1, 3), dtype=onp.float32)]
         self.meshio_mesh.cell_data['solidID'] = [onp.array(self.solidID.reshape(-1, 1), dtype=onp.float32)]
         self.meshio_mesh.write(os.path.join(self.args['data_dir'], f"vtk/cfd/sols/u{step:03d}.vtu"))
-       
 
+        
 class poisson():
     def __init__(self, mesh, nonlinear=False, mu=None, mu_fn=None,source_fn=None,bc_type=None, bc_value=None):
         self.msh = mesh
@@ -463,7 +530,7 @@ class velosity_eqn():
         self.rho = args['rho']
         fn = lambda u, u0, conv, grad_p, fl: -self.rho * (
             u - u0) / self.dt - self.rho*conv - grad_p - 1e7 * self.rho * (
-                1 - fl)**2 / (fl**3 + 1e-3) * u
+                1 - fl)**2 / (fl**3 + 1e-5) * u
         self.step = poisson(mesh=args['mesh_local'],
                             nonlinear= False,
                             mu=args['visco'],
@@ -676,7 +743,7 @@ class mesh3d(uniform_mesh):
                                        surf_y_pos, surf_z_neg, surf_z_pos))
 
 
-def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
+def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True,relative=False):
 # solve linear problems
     
     dofs = np.zeros(eqn.ndof)
@@ -685,12 +752,21 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True):
     if update:
         eqn.newton_update(dofs,*args)
 
+    if relative:
+        eqn.values = eqn.values.at[0].set(np.array([1., 0., 0., 0., 0., 0., 0.]))
+
+
     A_fn = eqn.compute_linearized_residual
     if precond:
         preconditoner = eqn.jacobiPreconditioner
+        if relative:
+            eqn.precond_values = eqn.precond_values.at[0].set(1.)
     else:
         preconditoner = None
+
     b = -res
+    if relative:
+        b = b.at[0].set(0.)
 
     # TODO(Tianju): Any way to detect if CG does not converge? The program can get stuck.
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, M=preconditoner, x0=None, tol=tol,maxiter=10000) # bicgstab
