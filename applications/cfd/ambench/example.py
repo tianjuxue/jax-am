@@ -11,7 +11,8 @@ from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
 from jax_am.cfd.json_parser import cfd_parse
-from jax_am.cfd.generate_mesh import box_mesh
+
+from jax_am.common import box_mesh
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
