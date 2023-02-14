@@ -20,6 +20,7 @@ vtk_dir = os.path.join(data_dir, f'vtk/{case_name}')
 os.makedirs(vtk_dir, exist_ok=True)
 
 
+
 def simulation():
     def to_id(idx, idy, idz):
         return idx * Ny * Nz + idy * Nz + idz
@@ -107,9 +108,9 @@ def simulation():
 
     def initialize_phase_free_fall(lattice_id, cell_centroids):
         id_x, id_y, id_z = to_id_xyz(lattice_id)
-        flag_x = cell_centroids[lattice_id, 0] < 0.8 * domain_x
-        flag_y = cell_centroids[lattice_id, 1] < 0.8 * domain_y
-        flag_z = cell_centroids[lattice_id, 2] < 0.8 * domain_z
+        flag_x = cell_centroids[lattice_id, 0] < 0.6 * domain_x
+        flag_y = cell_centroids[lattice_id, 1] < 0.6 * domain_y
+        flag_z = cell_centroids[lattice_id, 2] < 0.6 * domain_z
         flag = np.logical_and(np.logical_and(flag_x, flag_y), flag_z)
         tmp = np.where(flag, LIQUID, GAS)
         wall_x = np.logical_or(id_x == 0, id_x == Nx - 1)
@@ -139,7 +140,7 @@ def simulation():
     def compute_rho_u(f_distribute):
         rho = np.sum(f_distribute, axis=-1)
         rho = np.where(rho == 0., 1., rho)
-        u = (np.sum(f_distribute[:, :, :, :, None] * vels.T[None, None, None, :, :], axis=-2) + m*g[None, None, None, :]*rho[:, :, :, None]) / rho[:, :, :, None] 
+        u = (np.sum(f_distribute[:, :, :, :, None] * vels.T[None, None, None, :, :], axis=-2) + dt*m*g[None, None, None, :]*rho[:, :, :, None]) / rho[:, :, :, None] 
         return rho, u
 
 
@@ -205,21 +206,44 @@ def simulation():
     compute_curvature = jax.jit(shape_wrapper(compute_curvature))
 
 
-    def update(lattice_id, f_distribute, rho, u, phase, mass, vof, phi, kappa):
-        """Returns f_distribute, mass, kappa
+    def collide(lattice_id, f_distribute, rho, u, phase, phi, kappa):
+        """Returns f_distribute
         """
         f_distribute_self = extract_self(lattice_id, f_distribute) 
-        f_distribute_income = extract_income(lattice_id, f_distribute)
-        rho_local = extract_local(lattice_id, rho)
+        rho_self = extract_self(lattice_id, rho)
         u_self = extract_self(lattice_id, u)
         phase_local = extract_local(lattice_id, phase)
-        mass_local = extract_local(lattice_id, mass)
-        vof_local = extract_local(lattice_id, vof)
         phi_self = extract_self(lattice_id, phi)
         kappa_self = extract_self(lattice_id, kappa)
 
         def gas_or_wall():
-            return np.zeros_like(f_distribute_self), 0., 0.
+            return np.zeros_like(f_distribute_self)
+
+        def nongas():
+            f_equil = equilibrium_vmap(np.arange(Ns), rho_self, u_self) # (Ns,)
+            surface_force = forcing_vmap(np.arange(Ns), u_self, st_coeff*kappa_self*phi_self)
+            body_force = forcing_vmap(np.arange(Ns), u_self, rho_self*g) # (Ns,)
+            new_f_dist = 1./tau*(f_equil - f_distribute_self) + f_distribute_self + body_force*dt + surface_force*dt
+            return new_f_dist
+
+        return jax.lax.cond(np.logical_or(phase_local[0] == GAS, phase_local[0] == WALL), gas_or_wall, nongas)
+
+    collide_vmap = jax.jit(shape_wrapper(jax.vmap(collide, in_axes=(0, None, None, None, None, None, None))))
+
+
+
+    def update(lattice_id, f_distribute, rho, u, phase, mass, vof):
+        """Returns f_distribute, mass
+        """
+        f_distribute_self = extract_self(lattice_id, f_distribute) 
+        f_distribute_income = extract_income(lattice_id, f_distribute)
+        rho_self = extract_self(lattice_id, rho)
+        u_self = extract_self(lattice_id, u)
+        phase_local = extract_local(lattice_id, phase)
+        vof_local = extract_local(lattice_id, vof)
+
+        def gas_or_wall():
+            return np.zeros_like(f_distribute_self), 0.
 
         def nongas():
             def stream_wall(q):
@@ -237,16 +261,10 @@ def simulation():
 
             streamed_f_dist = jax.vmap(compute_stream)(np.arange(Ns)) # (Ns,)
             streamed_rho = np.sum(streamed_f_dist) # (,)
-            streamed_u = (np.sum(streamed_f_dist[:, None] * vels.T[:, :], axis=0) + m*g*streamed_rho)/ streamed_rho # (dim,)
-
-            surface_force = forcing_vmap(np.arange(Ns), streamed_u, st_coeff*kappa_self*phi_self)
-
-            f_equil = equilibrium_vmap(np.arange(Ns), streamed_rho, streamed_u) # (Ns,)
-            body_force = forcing_vmap(np.arange(Ns), streamed_u, streamed_rho*g) # (Ns,)
+            streamed_u = (np.sum(streamed_f_dist[:, None] * vels.T[:, :], axis=0) + dt*m*g*streamed_rho)/ streamed_rho # (dim,)
 
             def liquid():
-                new_f_dist = 1./tau*(f_equil - streamed_f_dist) + streamed_f_dist + body_force + surface_force
-                return new_f_dist, rho_local[0], kappa_self
+                return streamed_f_dist, rho_self
 
             def lg():
                 def mass_change_liquid(q):
@@ -268,15 +286,14 @@ def simulation():
                     return jax.lax.switch(phase_local[q], [mass_change_liquid, mass_change_lg, mass_change_gas_or_wall, mass_change_gas_or_wall], q)
 
                 delta_m = np.sum(jax.vmap(mass_change)(np.arange(Ns)))
-                new_f_dist = 1./tau*(f_equil - streamed_f_dist) + streamed_f_dist + body_force + surface_force
                 mass_self = extract_self(lattice_id, mass)
-                return new_f_dist, delta_m + mass_self, kappa_self
+                return streamed_f_dist, delta_m + mass_self
 
             return jax.lax.cond(phase_local[0] == LIQUID, liquid, lg)
 
         return jax.lax.cond(np.logical_or(phase_local[0] == GAS, phase_local[0] == WALL), gas_or_wall, nongas)
 
-    update_vmap = jax.jit(shape_wrapper(jax.vmap(update, in_axes=(0, None, None, None, None, None, None, None, None))))
+    update_vmap = jax.jit(shape_wrapper(jax.vmap(update, in_axes=(0, None, None, None, None, None, None))))
 
 
     def reini_lg_to_liquid(lattice_id, f_distribute, phase, mass):
@@ -392,6 +409,21 @@ def simulation():
     compute_total_mass_vmap = jax.jit(shape_wrapper(jax.vmap(compute_total_mass, in_axes=(0, None, None, None))))
 
 
+    def output_result(meshio_mesh, f_distribute, phase, mass, kappa, step):
+        rho = np.sum(f_distribute, axis=-1) # (Nx, Ny, Nz)
+        rho = np.where(rho == 0., 1., rho)
+        u = np.sum(f_distribute[:, :, :, :, None] * vels.T[None, None, None, :, :], axis=-2) / rho[:, :, :, None]
+        u = np.where(np.isfinite(u), u, 0.)
+        u = np.where((phase == LIQUID)[..., None], u, 0.)
+        meshio_mesh.cell_data['phase'] = [onp.array(phase, dtype=onp.float32)]
+        meshio_mesh.cell_data['mass'] = [onp.array(mass, dtype=onp.float32)]
+        meshio_mesh.cell_data['rho'] = [onp.array(rho, dtype=onp.float32)]
+        meshio_mesh.cell_data['kappa'] = [onp.array(kappa, dtype=onp.float32)]
+        meshio_mesh.cell_data['vel'] = [onp.array(u.reshape(-1, 3) , dtype=onp.float32)]
+        # meshio_mesh.cell_data['debug'] = [onp.array(dmass_output, dtype=onp.float32)]
+        meshio_mesh.write(os.path.join(vtk_dir, f'sol_{step:04d}.vtu'))
+
+
     files = glob.glob(os.path.join(vtk_dir, f'*'))
     for f in files:
         os.remove(f)
@@ -411,24 +443,50 @@ def simulation():
     weights = np.array([1./3., 1./18., 1./18., 1./18., 1./18., 1./18., 1./18., 1./36., 1./36., 1./36.,
                         1./36., 1./36., 1./36., 1./36., 1./36., 1./36., 1./36., 1./36., 1./36.])
     h = 1.
+    h_real = 2.e-6 # [m]
+    C_h = h_real/h
+
     dt = 1.
+    dt_real = 1e-7 # [s], 1e-7 for surface tension
+    C_dt = dt_real/dt
+
+    rho0 = 1.
+    rho0_real = 8440. # [kg/m^3]
+    C_rho0 = rho0_real/rho0
+
+    T0 = 1.
+    T0_real = 300.
+    C_T0 = T0_real/T0
+
+    viscosity_mu_real = 0.007 # [kg/(m*s)] ~ density*length^2/time
+    gravity_real = 9.8 * 0. # [m/s^2] ~ length/time^2
+    st_coeff_real = 1.8 # [N/m] ~ density*length^3/time^2
+
     m = 0.5
     Ns = 19
-    rho_g = 1.
-    rho0 = 1.
     cs_sq = 1./3.
-    tau = 0.75
     theta = 1e-3
-    g = np.array([0., 0., -0.0005])
-    st_coeff = 0.05
-    # st_coeff = 0.
-    # g = np.array([0., 0., 0.])
+
+    rho_g = rho0
+
+    viscosity_mu = viscosity_mu_real/(C_rho0*C_h**2/C_dt)
+    viscosity_nu = viscosity_mu/rho0
+    gravity = gravity_real/(C_h/C_dt**2)
+    g = np.array([0., 0., -gravity])
+    st_coeff = st_coeff_real/(C_rho0*C_h**3/C_dt**2)
+
+    tau = viscosity_nu/(cs_sq*dt) + 0.5
+
+    # assert tau < 1., f"Warning: tau = {tau} is out of range [0.5, 1] - may cause numerical instability"
+    print(f"Relaxation parameter tau = {tau}, gravity = {gravity}, surface tensiont coeff = {st_coeff}")
+
     lattice_ids = np.arange(Nx*Ny*Nz)
 
     phase = initialize_phase_surface_tension_vmap(lattice_ids, cell_centroids)
     # phase = initialize_phase_free_fall_vmap(lattice_ids, cell_centroids)
 
-    # f_distribute = np.ones((Nx, Ny, Nz, Ns)) * rho0 / Ns
+    h_distribute = np.tile(weights, (Nx, Ny, Nz, 1)) * T0
+
     f_distribute = np.tile(weights, (Nx, Ny, Nz, 1)) * rho0
     mass = np.sum(f_distribute, axis=-1)
     
@@ -438,16 +496,19 @@ def simulation():
 
     total_mass = np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))
 
+    output_result(meshio_mesh, f_distribute, phase, mass, np.zeros_like(mass), 0)
 
     start_time = time.time()
-    for i in range(3001):
+    for i in range(5001):
         print(f"Step {i}")
         print(f"Initial mass = {np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))}")
 
         rho, u = compute_rho_u(f_distribute)
         vof = compute_vof(rho, phase, mass)
         phi, kappa = compute_curvature(lattice_ids, vof)
-        f_distribute, mass, kappa = update_vmap(lattice_ids, f_distribute, rho, u, phase, mass, vof, phi, kappa)
+
+        f_distribute = collide_vmap(lattice_ids, f_distribute, rho, u, phase, phi, kappa)
+        f_distribute, mass = update_vmap(lattice_ids, f_distribute, rho, u, phase, mass, vof)
 
         print(f"max kappa = {np.max(kappa)}, min kappa = {np.min(kappa)}")
         # print(f"After update, mass = {np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))}")
@@ -475,19 +536,8 @@ def simulation():
         # print(f"max f_distribute = {np.max(f_distribute)}, max mass = {np.max(mass)}")
         # print(f"min f_distribute = {np.min(f_distribute)}, min mass = {np.min(mass)}")
 
-        if i % 100 == 0:
-            rho = np.sum(f_distribute, axis=-1) # (Nx, Ny, Nz)
-            rho = np.where(rho == 0., 1., rho)
-            u = np.sum(f_distribute[:, :, :, :, None] * vels.T[None, None, None, :, :], axis=-2) / rho[:, :, :, None]
-            u = np.where(np.isfinite(u), u, 0.)
-            u = np.where((phase == LIQUID)[..., None], u, 0.)
-            meshio_mesh.cell_data['phase'] = [onp.array(phase, dtype=onp.float32)]
-            meshio_mesh.cell_data['mass'] = [onp.array(mass, dtype=onp.float32)]
-            meshio_mesh.cell_data['rho'] = [onp.array(rho, dtype=onp.float32)]
-            meshio_mesh.cell_data['kappa'] = [onp.array(kappa, dtype=onp.float32)]
-            meshio_mesh.cell_data['vel'] = [onp.array(u.reshape(-1, 3) , dtype=onp.float32)]
-            # meshio_mesh.cell_data['debug'] = [onp.array(dmass_output, dtype=onp.float32)]
-            meshio_mesh.write(os.path.join(vtk_dir, f'sol_{i:04d}.vtu'))
+        if (i + 1) % 100 == 0:
+            output_result(meshio_mesh, f_distribute, phase, mass, kappa, i + 1)
 
     end_time = time.time()
     print(f"Total wall time = {end_time - start_time}")
