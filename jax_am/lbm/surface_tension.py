@@ -12,7 +12,5 @@ def case_study():
     simulation()
 
 
-
 if __name__== "__main__":
     case_study()
-
