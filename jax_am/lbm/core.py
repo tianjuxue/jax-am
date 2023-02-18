@@ -134,13 +134,13 @@ def simulation():
             return False
 
         circles = []
-        num_circles = 40
-        # num_circles = 10
+        num_circles = 90
+        # num_circles = 0
         
         r_mean = 0.08*domain_y
         for i in range(num_circles):
             while True:
-                r = onp.random.normal(loc=r_mean, scale=0.1*r_mean)
+                r = onp.random.normal(loc=r_mean, scale=0.2*r_mean)
                 x = onp.random.uniform(low=r, high=domain_x - r)
                 y = onp.random.uniform(low=r, high=domain_y - r)
                 cand_c = [x, y, r]
@@ -153,7 +153,7 @@ def simulation():
     def initialize_phase_powder(lattice_id, cell_centroids, circles):
         id_x, id_y, id_z = to_id_xyz(lattice_id)
 
-        plate_z = 0.4 * domain_z
+        plate_z = 0.5 * domain_z
         flag =  cell_centroids[lattice_id, 2] < plate_z
 
         # # r = 0.1*domain_y
@@ -313,8 +313,10 @@ def simulation():
         normal = np.where(np.isfinite(normal), normal, 0.)
         Marangoni_force = st_grad_coeff * (T_grad - np.sum(normal*T_grad, axis=-1)[:, :, :, None]*normal) * \
                           np.linalg.norm(phi, axis=-1)[:, :, :, None]*2.*vof[:, :, :, None]
+
+        recoil_pressure = 0.54*p_atm*np.exp(latent_evap*(T - T_evap)/(gas_const*T*T_evap))[:, :, :, None] * phi
         
-        source_term = gravity_force + st_force + Marangoni_force
+        source_term = gravity_force + st_force + Marangoni_force + recoil_pressure
         return source_term
 
 
@@ -333,6 +335,10 @@ def simulation():
         phi_self = extract_self(lattice_id, phi)
         centroid = cell_centroids[lattice_id]
 
+        q_rad = SB_const*emissivity*(T0**4 - T_self**4)
+        q_conv = h_conv*(T0 - T_self)
+        q_loss = np.linalg.norm(phi_self) * (q_conv + q_rad) * 2.*vof_self
+
         x, y, z = centroid
         laser_x = 1./6.*domain_x + scanning_vel*crt_t
         laser_y = 1./2.*domain_y
@@ -341,16 +347,15 @@ def simulation():
         # d = 1./4.*domain_z
         # q_laser = 2*laser_power*absorbed_fraction/(np.pi*beam_size**2)*np.exp(-2.*((x-laser_x)**2 + (y-laser_y)**2)/beam_size**2)
         # q_laser_body = q_laser/d * np.where(np.absolute(z - laser_z) < d, 1., 0.)  
-        # heat_source = (np.linalg.norm(phi_self) * (q_conv + q_rad) * 2.*vof_self + q_laser_body) 
+        # heat_source = q_loss + q_laser_body
 
         q_laser = 2*laser_power*absorbed_fraction/(np.pi*beam_size**2)*np.exp(-2.*((x-laser_x)**2 + (y-laser_y)**2)/beam_size**2)
-        q_rad = SB_constant*emissivity*(T0**4 - T_self**4)
-        q_conv = h_conv*(T0 - T_self)
-        # heat_source = np.linalg.norm(phi_self) * (q_conv + q_rad + q_laser) # TODO: 2.*vof_self?
+
+        # heat_source = np.linalg.norm(phi_self) * q_laser * 2.*vof_self + q_loss # TODO: 2.*vof_self?
 
         tmp = (-phi_self * np.array([0., 0., 1.]))[2]
         tmp = np.where(tmp > 0., tmp, 0.)
-        heat_source = tmp * (q_conv + q_rad + q_laser)
+        heat_source = tmp * q_laser * 2.*vof_self + q_loss
 
         return heat_source
 
@@ -405,7 +410,6 @@ def simulation():
         def nongas():
             h_equil = equilibrium_h_vmap(np.arange(Ns), enthalpy_self, T_self, u_self)
             heat_source = h_forcing_vmap(h_source_term_self, rho_self)   
-
 
             tau_diffusivity = np.where(T_self < T_solidus, tau_diffusivity_s, tau_diffusivity_l)
             new_h_dist = 1./tau_diffusivity*(h_equil - h_distribute_self) + h_distribute_self + heat_source*dt
@@ -640,7 +644,7 @@ def simulation():
     compute_total_mass_vmap = jax.jit(shape_wrapper(jax.vmap(compute_total_mass, in_axes=(0, None, None, None))))
 
 
-    def output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, step):
+    def output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, melted, step):
         rho = np.sum(f_distribute, axis=-1) # (Nx, Ny, Nz)
         rho = np.where(rho == 0., 1., rho)
         u = np.sum(f_distribute[:, :, :, :, None] * vels.T[None, None, None, :, :], axis=-2) / rho[:, :, :, None]
@@ -659,6 +663,7 @@ def simulation():
         meshio_mesh.cell_data['kappa'] = [onp.array(kappa, dtype=onp.float32)]
         meshio_mesh.cell_data['vel'] = [onp.array(u.reshape(-1, 3) , dtype=onp.float32)]
         meshio_mesh.cell_data['T'] = [onp.array(T, dtype=onp.float32)]
+        meshio_mesh.cell_data['melted'] = [onp.array(melted, dtype=onp.float32)]
         # meshio_mesh.cell_data['debug'] = [onp.array(dmass_output, dtype=onp.float32)]
         meshio_mesh.write(os.path.join(vtk_dir, f'sol_{step:04d}.vtu'))
 
@@ -669,7 +674,8 @@ def simulation():
 
     # 800x200x200 works
     # Nx, Ny, Nz = 300, 100, 100 
-    Nx, Ny, Nz = 150, 50, 50 
+    # Nx, Ny, Nz = 150, 50, 50 
+    Nx, Ny, Nz = 250, 50, 40 
     # Nx, Ny, Nz = 100, 100, 100 
 
     domain_x, domain_y, domain_z = Nx, Ny, Nz
@@ -696,7 +702,7 @@ def simulation():
     C_length = h_real/h
 
     dt = 1.
-    dt_real = 1e-7 # [s], 1e-7 for surface tension
+    dt_real = 2.*1e-7 # [s], 1e-7 for surface tension
     # dt_real = 0.5*1e-7 # [s], 1e-7 for surface tension
 
     C_time = dt_real/dt
@@ -709,29 +715,41 @@ def simulation():
     T0_real = 300.
     C_temperature = T0_real/T0
 
+    M0 = 1.
+    M0_real = 1.
+    C_molar = M0_real/M0
+
     C_mass = C_density*C_length**3
     C_force = C_mass*C_length/(C_time**2)
     C_energy = C_force*C_length
+    C_pressure = C_force/C_length**2
 
     gravity_real = 9.8 # [m/s^2]
     viscosity_mu_real = 0.007 # [kg/(m*s)]
     # viscosity_mu_real = 0.001 # [kg/(m*s)] 
     st_coeff_real = 1.8 # [N/m]
     st_grad_coeff_real = -2e-5 # [N/(m*K)]
+
+    p_atm_real = 101325 # [Pa]
+    molar_mass_real = 6.14e-2 # [kg/mol]
+    gas_const_real = 8.314 # [J/(K*mol)]
+
     laser_power_real = 100 # [W]
-    beam_size_real = 1e-4 # [m]
+    beam_size_real = 25.*1e-6 # [m]
     absorbed_fraction_real = 0.4
     scanning_vel_real = 0.4 # [m/s]
     heat_capacity_volume_real = 5.2e6 # [J/(m^3*K)]
     heat_capacity_real = heat_capacity_volume_real/rho0_real # [J/(kg*K)]
     thermal_diffusivitity_l_real = 30./heat_capacity_volume_real # [m^2/s]  
     thermal_diffusivitity_s_real = 9.8/heat_capacity_volume_real # [m^2/s]
-    SB_constant_real = 5.67e-8 # [kg*s^-3*K^-4]
-    emissivity_real = 0.2
+    SB_const_real = 5.67e-8 # [kg*s^-3*K^-4]
+    emissivity_real = 0.3
     h_conv_real = 100 # [kg*s^-3*K^-1]
     latent_heat_real = 2.16e9/rho0_real # [J/kg]
+    latent_evap_real = 379.e3 # [J/mol] 
     T_liquidus_real = 1623 # [K]
     T_solidus_real = 1563 # [K]
+    T_evap_real = 3188 # [K]
     enthalpy_s_real = heat_capacity_real*T_solidus_real # [J/kg]
     enthalpy_l_real = heat_capacity_real*T_liquidus_real + latent_heat_real # [J/kg]
 
@@ -739,19 +757,27 @@ def simulation():
     viscosity_mu = viscosity_mu_real/(C_mass/(C_length*C_time))
     st_coeff = st_coeff_real/(C_force/C_length)
     st_grad_coeff = st_grad_coeff_real/(C_force/(C_length*C_temperature))
+
+    p_atm = p_atm_real/C_pressure
+    molar_mass = molar_mass_real/(C_mass/C_molar)
+    gas_const = gas_const_real/(C_energy/(C_temperature*C_molar))
+
+
     laser_power = laser_power_real/(C_energy/C_time)
-    beam_size = beam_size_real/(C_length)
+    beam_size = beam_size_real/C_length
     absorbed_fraction = absorbed_fraction_real
     scanning_vel = scanning_vel_real/(C_length/C_time)
     heat_capacity = heat_capacity_real/(C_energy/(C_mass*C_temperature))
     thermal_diffusivitity_l = thermal_diffusivitity_l_real/(C_length**2/C_time)
     thermal_diffusivitity_s = thermal_diffusivitity_s_real/(C_length**2/C_time)
-    SB_constant = SB_constant_real/(C_mass/C_time**3/C_temperature**4)
+    SB_const = SB_const_real/(C_mass/C_time**3/C_temperature**4)
     emissivity = emissivity_real
     h_conv = h_conv_real/(C_mass/C_time**3/C_temperature)
     latent_heat = latent_heat_real/(C_energy/C_mass)
+    latent_evap = latent_evap_real/(C_energy/C_molar)
     T_liquidus = T_liquidus_real/C_temperature
     T_solidus = T_solidus_real/C_temperature
+    T_evap = T_evap_real/C_temperature
     enthalpy_s = enthalpy_s_real/(C_energy/C_mass)
     enthalpy_l = enthalpy_l_real/(C_energy/C_mass)
 
@@ -768,6 +794,8 @@ def simulation():
 
     # assert tau_viscosity_nu < 1., f"Warning: tau_viscosity_nu = {tau_viscosity_nu} is out of range [0.5, 1] - may cause numerical instability"
     print(f"Relaxation parameter tau_viscosity_nu = {tau_viscosity_nu}, tau_diffusivity_s = {tau_diffusivity_s}, surface tensiont coeff = {st_coeff}")
+    print(f"Lattice = ({Nx}, {Ny}, {Nz}), size = {h_real*1e6} micro m")
+    print(f"TODO - Reynolds number")
 
     lattice_ids = np.arange(Nx*Ny*Nz)
 
@@ -789,7 +817,8 @@ def simulation():
 
     total_mass = np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))
 
-    output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, np.zeros_like(mass), 0)
+    melted = np.zeros_like(mass)
+    output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, np.zeros_like(mass), melted, 0)
 
     start_time = time.time()
     for i in range(15000):
@@ -842,13 +871,12 @@ def simulation():
         # print(f"After refresh, total mass = {np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))}")
         # print(f"max f_distribute = {np.max(f_distribute)}, max mass = {np.max(mass)}")
         # print(f"min f_distribute = {np.min(f_distribute)}, min mass = {np.min(mass)}")
-        # bad_points = np.sum(np.logical_and(phase == LG, compute_T(compute_enthalpy(h_distribute)) < T0*1e-3))
-        # assert bad_points < 1e-3, f"break 1, bad_points = {bad_points}"
 
-        inverval = 500
+        melted = np.where(T > T_solidus, 1., melted)
+        inverval = 250
         if (i + 1) % inverval == 0:
             print(f"Step {i + 1}")
-            output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, (i + 1) // inverval)
+            output_result(meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, melted, (i + 1) // inverval)
 
     end_time = time.time()
     print(f"Total wall time = {end_time - start_time}")
