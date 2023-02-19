@@ -1,0 +1,180 @@
+{   
+    "general_comment": "material is water",
+
+    "Nx":
+    {
+        "value": 100,
+        "unit": "",
+        "comment": "number of cells along x-direction" 
+    },
+    "Ny":
+    {
+        "value": 100,
+        "unit": "",
+        "comment": "number of cells along y-direction" 
+    },
+    "Nz":
+    {
+        "value": 100,
+        "unit": "",
+        "comment": "number of cells along z-direction" 
+    },
+    "h":
+    {
+        "value": 6.164e-7,
+        "unit": "[m]",
+        "comment": "cell size"  
+    },
+    "dt":
+    {
+        "value": 1.266e-8,
+        "unit": "[s]",
+        "comment": "time step"  
+    },
+    "rho0":
+    {
+        "value": 1e3,
+        "unit": "[kg/m^3]",
+        "comment": "density"  
+    },
+    "T0":
+    {
+        "value": 300,
+        "unit": "[K]",
+        "comment": "ambient temperature"  
+    },
+    "M0":
+    {
+        "value": 1.8e-2,
+        "unit": "[kg/mol]",
+        "comment": "molar mass"  
+    },
+    "dynamic_viscosity":
+    {
+        "value": 0.001,
+        "unit": "[kg/(m*s)]",
+        "comment": "dynamic viscosity"  
+    },
+    "gravity":
+    {
+        "value": 0,
+        "unit": "[m/s^2]",
+        "comment": "gravity"  
+    },
+    "st_coeff":
+    {
+        "value": 0.073,
+        "unit": "[N/m]",
+        "comment": "surface tension coefficient"  
+    },
+    "st_grad_coeff":
+    {
+        "value": 0,
+        "unit": "[N/(m*K)]",
+        "comment": "surface tension gradient coefficient"  
+    },
+    "rp_coeff":
+    {
+        "value": 0,
+        "unit": "",
+        "comment": " recoil pressure coefficient"
+    },
+    "laser_power":
+    {
+        "value": 0,
+        "unit": "[W]",
+        "comment": "laser power"  
+    },
+    "beam_size":
+    {
+        "value": 25e-6,
+        "unit": "[m]",
+        "comment": "laser beam spot radius"  
+    },
+    "absorbed_fraction":
+    {
+        "value": 0.4,
+        "unit": "",
+        "comment": "laser absorbed fraction"  
+    },
+    "scanning_vel":
+    {
+        "value": 0.4,
+        "unit": "[m/s]",
+        "comment": "laser scanning speed"  
+    },
+    "heat_capacity":
+    {
+        "value": 4186,
+        "unit": "[J/(kg*K)]",
+        "comment": "heat capacity"  
+    },
+    "thermal_diffusivitity_l":
+    {
+        "value": 0.15e-06,
+        "unit": "[m^2/s]",
+        "comment": "thermal diffusivitity at liquid state"  
+    },
+    "thermal_diffusivitity_s":
+    {
+        "value": 0.15e-06,
+        "unit": "[m^2/s]",
+        "comment": "thermal diffusivitity at solid state"  
+    },
+    "emissivity":
+    {
+        "value": 0,
+        "unit": "",
+        "comment": "emissivity"  
+    },
+    "h_conv":
+    {
+        "value": 0,
+        "unit": "[kg*s^-3*K^-1]",
+        "comment": "heat convection coefficient"  
+    },
+    "latent_heat_fusion":
+    {
+        "value": 0,
+        "unit": "[J/kg]",
+        "comment": "latent heat of fusion"  
+    },
+    "latent_heat_evap":
+    {
+        "value": 0 ,
+        "unit": "[J/kg]",
+        "comment": "latent heat of fusion"  
+    },
+    "T_liquidus":
+    {
+        "value": 273,
+        "unit": "[K]",
+        "comment": "liquidus temperature"  
+    },
+    "T_solidus":
+    {
+        "value": 273,
+        "unit": "[K]",
+        "comment": "solidus temperature"  
+    },
+    "T_evap":
+    {
+        "value": 373,
+        "unit": "[K]",
+        "comment": "evaporation temperature"  
+    },
+    "enthalpy_s":
+    {
+        "value": 1.142778e6,
+        "unit": "[J/kg]",
+        "comment": "enthalpy at solidus temperature, calculated as heat_capacity*T_solidus"  
+    },
+    "enthalpy_l":
+    {
+        "value": 1.142778e6,
+        "unit": "[J/kg]",
+        "comment": "enthalpy at liquid temperature, calculated as heat_capacity*T_liquidus + latent_heat_fusion"  
+    },
+    "total_time_steps": 5000,
+    "output_interval": 100
+}

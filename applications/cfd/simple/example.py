@@ -8,9 +8,7 @@ import glob
 from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.cfd.json_parser import cfd_parse
-
-from jax_am.common import box_mesh
+from jax_am.common import box_mesh, json_parse
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
@@ -35,7 +33,7 @@ def integrator():
                         [round(0.75*Nx), round(0.5*Ny), round(0.4*Nz)])
     meshio_mesh = box_mesh(Nx, Ny, Nz, domain_x, domain_y, domain_z)
 
-    cfd_args = cfd_parse(os.path.join(crt_file_path, 'cfd_params.json'))
+    cfd_args = json_parse(os.path.join(crt_file_path, 'cfd_params.json'))
     cfd_args['mesh'] = mesh
     cfd_args['mesh_local'] = mesh_local
     cfd_args['meshio_mesh'] = meshio_mesh

@@ -8,14 +8,12 @@ import glob
 from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.cfd.json_parser import cfd_parse
 
 from jax_am.phase_field.utils import Field, walltime
-from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
 
-from jax_am.common import box_mesh
+from jax_am.common import box_mesh, json_parse, yaml_parse
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
@@ -45,7 +43,7 @@ def coupled_integrator():
 
     crt_file_path = os.path.dirname(__file__)
     data_dir = os.path.join(crt_file_path, 'data')
-    pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
+    pf_args = yaml_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
 
     pre_processing(pf_args)
@@ -65,7 +63,7 @@ def coupled_integrator():
     
     meshio_mesh = box_mesh(pf_args['Nx'], pf_args['Ny'], pf_args['Nz'], pf_args['domain_x'], pf_args['domain_y'], pf_args['domain_z'])
 
-    cfd_args = cfd_parse(os.path.join(crt_file_path, 'cfd_params.json'))
+    cfd_args = json_parse(os.path.join(crt_file_path, 'cfd_params.json'))
     cfd_args['mesh'] = mesh
     cfd_args['mesh_local'] = mesh_local
     cfd_args['cp'] = lambda T: (0.2441*np.clip(T,300,1563)+338.39) 

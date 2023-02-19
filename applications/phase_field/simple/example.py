@@ -9,9 +9,10 @@ from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
 from jax_am.phase_field.utils import Field, walltime
-from jax_am.phase_field.yaml_parser import pf_parse
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
+
+from jax_am.common import yaml_parse
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -39,7 +40,7 @@ def get_T_fn(polycrystal, pf_args):
 def integrator():
     crt_file_path = os.path.dirname(__file__)
     data_dir = os.path.join(crt_file_path, 'data')
-    pf_args = pf_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
+    pf_args = yaml_parse(os.path.join(crt_file_path, 'pf_params.yaml'))
     pf_args['data_dir'] = data_dir
 
     pre_processing(pf_args)
