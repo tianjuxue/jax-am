@@ -207,7 +207,7 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
         return u
 
 
-    def compute_h_src(lattice_id, T, vof, phi, cell_centroids, crt_t):
+    def compute_h_src(lattice_id, T, vof, phi, cell_centroids, laser_x, laser_y, switch):
         T_self = extract_self(lattice_id, T)
         vof_self = extract_self(lattice_id, vof)
         phi_self = extract_self(lattice_id, phi)
@@ -218,16 +218,13 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
         q_loss = np.linalg.norm(phi_self) * (q_conv + q_rad) * 2.*vof_self
 
         x, y, z = centroid
-        laser_x = 1./6.*domain_x + scanning_vel*crt_t
-        laser_y = 1./2.*domain_y
-        laser_z = 1./2.*domain_z
 
         # d = 1./4.*domain_z
         # q_laser = 2*laser_power*absorbed_fraction/(np.pi*beam_size**2)*np.exp(-2.*((x-laser_x)**2 + (y-laser_y)**2)/beam_size**2)
         # q_laser_body = q_laser/d * np.where(np.absolute(z - laser_z) < d, 1., 0.)  
         # heat_source = q_loss + q_laser_body
 
-        q_laser = 2*laser_power*absorbed_fraction/(np.pi*beam_size**2)*np.exp(-2.*((x-laser_x)**2 + (y-laser_y)**2)/beam_size**2)
+        q_laser = switch * 2*laser_power*absorbed_fraction/(np.pi*beam_size**2)*np.exp(-2.*((x-laser_x)**2 + (y-laser_y)**2)/beam_size**2)
 
         # heat_source = np.linalg.norm(phi_self) * q_laser * 2.*vof_self + q_loss # TODO: 2.*vof_self?
 
@@ -237,8 +234,7 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
 
         return heat_source
 
-    compute_h_source_term = jax.jit(shape_wrapper(jax.vmap(compute_h_src, in_axes=(0, None, None, None, None, None)), lbm_args))
-
+    compute_h_source_term = jax.jit(shape_wrapper(jax.vmap(compute_h_src, in_axes=(0, None, None, None, None, None, None, None)), lbm_args))
 
 
     def collide_f(lattice_id, f_distribute, rho, T, u, phase, f_source_term):
@@ -522,6 +518,31 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
     compute_total_mass_vmap = jax.jit(shape_wrapper(jax.vmap(compute_total_mass, in_axes=(0, None, None, None)), lbm_args))
 
 
+    def read_path():
+        x_corners = lbm_args['laser_path']['x_pos']
+        y_corners = lbm_args['laser_path']['y_pos']
+        power_control = lbm_args['laser_path']['switch'][:-1]
+        ts, xs, ys, zs, ps, mov_dir = [], [], [], [], [], []
+        t_pre = 0.
+        for i in range(len(x_corners) - 1):
+            moving_direction = onp.array([x_corners[i + 1] - x_corners[i], 
+                                          y_corners[i + 1] - y_corners[i]])
+            traveled_dist = onp.linalg.norm(moving_direction)
+            traveled_time = traveled_dist/lbm_args['scanning_vel']['value']
+            ts_seg = onp.arange(t_pre, t_pre + traveled_time + 1e-10, lbm_args['dt']['value'])
+            xs_seg = onp.linspace(x_corners[i], x_corners[i + 1], len(ts_seg))
+            ys_seg = onp.linspace(y_corners[i], y_corners[i + 1], len(ts_seg))
+            ps_seg = onp.linspace(power_control[i], power_control[i], len(ts_seg))
+            ts.append(ts_seg)
+            xs.append(xs_seg)
+            ys.append(ys_seg)
+            ps.append(ps_seg)
+            t_pre = t_pre + traveled_time
+
+        ts, xs, ys, ps = onp.hstack(ts), onp.hstack(xs), onp.hstack(ys), onp.hstack(ps) 
+        return ts, xs, ys, ps
+
+
     def output_result(data_dir, meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, melted, step):
         vtk_dir = os.path.join(data_dir, f'vtk')
         rho = np.sum(f_distribute, axis=-1) # (Nx, Ny, Nz)
@@ -551,6 +572,8 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
     Nx, Ny, Nz = lbm_args['Nx']['value'], lbm_args['Ny']['value'], lbm_args['Nz']['value']
     domain_x, domain_y, domain_z = Nx, Ny, Nz
     cell_centroids = compute_cell_centroid(meshio_mesh)
+    ts, xs, ys, ps = read_path()
+    total_time_steps = len(ts) - 1
 
     vels = np.array([[0, 1, -1, 0,  0, 0,  0, 1, -1 , 1, -1, 1, -1, -1,  1, 0,  0,  0,  0],
                      [0, 0,  0, 1, -1, 0,  0, 1, -1, -1,  1, 0,  0,  0,  0, 1, -1,  1, -1],
@@ -640,10 +663,10 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
     output_result(data_dir, meshio_mesh, f_distribute, h_distribute, phase, mass, np.zeros_like(mass), melted, 0)
 
     start_time = time.time()
-    for i in range(lbm_args['total_time_steps']):
+    for i in range(total_time_steps):
         # print(f"Step {i}")
         # print(f"Initial mass = {np.sum(compute_total_mass_vmap(lattice_ids, f_distribute, phase, mass))}")
-        crt_t = (i + 1)*dt
+        # crt_t = (i + 1)*dt
 
         if fluid_only:
             h_distribute = np.tile(weights, (Nx, Ny, Nz, 1)) * (enthalpy_l + 1.)
@@ -656,7 +679,7 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
         T_grad = compute_T_grad(lattice_ids, T, phase)
 
         f_source_term = compute_f_source_term(rho, vof, phi, kappa, T, T_grad)
-        h_source_term = compute_h_source_term(lattice_ids, T, vof, phi, cell_centroids, crt_t)
+        h_source_term = compute_h_source_term(lattice_ids, T, vof, phi, cell_centroids, xs[i + 1]/C_length, ys[i + 1]/C_length, ps[i + 1])
         u = compute_u(f_distribute, rho, T, f_source_term)
 
         f_distribute = collide_f_vmap(lattice_ids, f_distribute, rho, T, u, phase, f_source_term)
@@ -694,7 +717,7 @@ def simulation(lbm_args, data_dir, meshio_mesh, initial_phase, fluid_only=False)
         melted = np.where(T > T_solidus, 1., melted)
         inverval = lbm_args['output_interval']
         if (i + 1) % inverval == 0:
-            print(f"Step {i + 1}")
+            print(f"Step {i + 1} in {total_time_steps}")
             output_result(data_dir, meshio_mesh, f_distribute, h_distribute, phase, mass, kappa, melted, (i + 1) // inverval)
 
     end_time = time.time()

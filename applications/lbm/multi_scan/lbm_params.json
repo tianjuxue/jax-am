@@ -1,9 +1,9 @@
 {   
-    "general_comment": "material is water",
+    "general_comment": "material is inconel 625",
 
     "Nx":
     {
-        "value": 100,
+        "value": 250,
         "unit": "",
         "comment": "number of cells along x-direction" 
     },
@@ -15,25 +15,25 @@
     },
     "Nz":
     {
-        "value": 100,
+        "value": 25,
         "unit": "",
         "comment": "number of cells along z-direction" 
     },
     "h":
     {
-        "value": 6.164e-7,
+        "value": 4e-6,
         "unit": "[m]",
         "comment": "cell size"  
     },
     "dt":
     {
-        "value": 1.266e-8,
+        "value": 5e-7,
         "unit": "[s]",
         "comment": "time step"  
     },
     "rho0":
     {
-        "value": 1e3,
+        "value": 8440,
         "unit": "[kg/m^3]",
         "comment": "density"  
     },
@@ -45,25 +45,25 @@
     },
     "M0":
     {
-        "value": 1.8e-2,
+        "value": 6.14e-2,
         "unit": "[kg/mol]",
         "comment": "molar mass"  
     },
-    "dynamic_viscosity":
-    {
-        "value": 0.001,
-        "unit": "[kg/(m*s)]",
-        "comment": "dynamic viscosity"  
-    },
     "gravity":
     {
-        "value": 0,
+        "value": 9.8,
         "unit": "[m/s^2]",
         "comment": "gravity"  
     },
+    "dynamic_viscosity":
+    {
+        "value": 0.007,
+        "unit": "[kg/(m*s)]",
+        "comment": "dynamic viscosity"  
+    },
     "st_coeff":
     {
-        "value": 0.073,
+        "value": 0,
         "unit": "[N/m]",
         "comment": "surface tension coefficient"  
     },
@@ -81,13 +81,13 @@
     },
     "laser_power":
     {
-        "value": 0,
+        "value": 100,
         "unit": "[W]",
         "comment": "laser power"  
     },
     "beam_size":
     {
-        "value": 25e-6,
+        "value": 50e-6,
         "unit": "[m]",
         "comment": "laser beam spot radius"  
     },
@@ -99,87 +99,87 @@
     },
     "scanning_vel":
     {
-        "value": 1,
+        "value": 0.4,
         "unit": "[m/s]",
         "comment": "laser scanning speed"  
     },
     "laser_path":
     {
-        "x_pos": [0, 6.33e-5],
-        "y_pos": [0, 0],
-        "switch": [0, 0]
+        "x_pos": [0.2e-3, 0.8e-3],
+        "y_pos": [0.2e-3, 0.2e-3],
+        "switch": [1, 0]
     },
     "heat_capacity":
     {
-        "value": 4186,
+        "value": 588.23,
         "unit": "[J/(kg*K)]",
         "comment": "heat capacity"  
     },
     "thermal_diffusivitity_l":
     {
-        "value": 0.15e-06,
+        "value": 5.769e-06,
         "unit": "[m^2/s]",
         "comment": "thermal diffusivitity at liquid state"  
     },
     "thermal_diffusivitity_s":
     {
-        "value": 0.15e-06,
+        "value": 1.885e-6,
         "unit": "[m^2/s]",
         "comment": "thermal diffusivitity at solid state"  
     },
     "emissivity":
     {
-        "value": 0,
+        "value": 0.3,
         "unit": "",
         "comment": "emissivity"  
     },
     "h_conv":
     {
-        "value": 0,
+        "value": 100,
         "unit": "[kg*s^-3*K^-1]",
         "comment": "heat convection coefficient"  
     },
     "latent_heat_fusion":
     {
-        "value": 0,
+        "value": 2.557e5,
         "unit": "[J/kg]",
         "comment": "latent heat of fusion"  
     },
     "latent_heat_evap":
     {
-        "value": 0 ,
+        "value": 6.173e6 ,
         "unit": "[J/kg]",
         "comment": "latent heat of fusion"  
     },
     "T_liquidus":
     {
-        "value": 273,
+        "value": 1623,
         "unit": "[K]",
         "comment": "liquidus temperature"  
     },
     "T_solidus":
     {
-        "value": 273,
+        "value": 1563,
         "unit": "[K]",
         "comment": "solidus temperature"  
     },
     "T_evap":
     {
-        "value": 373,
+        "value": 3188,
         "unit": "[K]",
         "comment": "evaporation temperature"  
     },
     "enthalpy_s":
     {
-        "value": 1.142778e6,
+        "value": 9.19403e5,
         "unit": "[J/kg]",
         "comment": "enthalpy at solidus temperature, calculated as heat_capacity*T_solidus"  
     },
     "enthalpy_l":
     {
-        "value": 1.142778e6,
+        "value": 1.210397e6,
         "unit": "[J/kg]",
         "comment": "enthalpy at liquid temperature, calculated as heat_capacity*T_liquidus + latent_heat_fusion"  
     },
-    "output_interval": 100
+    "output_interval": 300
 }

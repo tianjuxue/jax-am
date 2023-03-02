@@ -99,9 +99,15 @@
     },
     "scanning_vel":
     {
-        "value": 0.4,
+        "value": 1,
         "unit": "[m/s]",
         "comment": "laser scanning speed"  
+    },
+    "laser_path":
+    {
+        "x_pos": [0, 0.4],
+        "y_pos": [0, 0],
+        "switch": [0, 0]
     },
     "heat_capacity":
     {
@@ -175,6 +181,5 @@
         "unit": "[J/kg]",
         "comment": "enthalpy at liquid temperature, calculated as heat_capacity*T_liquidus + latent_heat_fusion"  
     },
-    "total_time_steps": 2000,
     "output_interval": 100
 }

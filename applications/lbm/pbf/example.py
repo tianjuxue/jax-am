@@ -7,9 +7,11 @@ from jax_am.lbm.core import simulation
 from jax_am.lbm.utils import ST, shape_wrapper, compute_cell_centroid, to_id_xyz
 from jax_am.common import make_video, json_parse, box_mesh
 
-
 onp.random.seed(0)
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+crt_file_path = os.path.dirname(__file__)
+data_dir = os.path.join(crt_file_path, 'data')
 
 
 def case_study():
@@ -64,8 +66,7 @@ def case_study():
         return np.where(wall, ST.WALL, tmp)
 
 
-    crt_file_path = os.path.dirname(__file__)
-    data_dir = os.path.join(crt_file_path, 'data')
+
     lbm_args = json_parse(os.path.join(crt_file_path, 'lbm_params.json'))
     Nx, Ny, Nz = lbm_args['Nx']['value'], lbm_args['Ny']['value'], lbm_args['Nz']['value']
     domain_x, domain_y, domain_z = Nx, Ny, Nz
@@ -77,3 +78,4 @@ def case_study():
 
 if __name__== "__main__":
     case_study()
+    # make_video(data_dir)
