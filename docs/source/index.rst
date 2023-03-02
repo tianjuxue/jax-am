@@ -56,12 +56,8 @@ Contents
    :maxdepth: 1
    :caption: Contents:
 
-   installation
-   .. quick_start
-   .. notes
-   .. tutorial
-   .. api
-   .. about
+   notes
+
 
 Indices and tables
 ==================
