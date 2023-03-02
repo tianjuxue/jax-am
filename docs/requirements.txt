@@ -1,4 +1,4 @@
-sphinx >=3
+sphinx >=6
 sphinx_rtd_theme
 sphinx-book-theme
 sphinx-remove-toctrees
@@ -12,24 +12,8 @@ myst-nb
 # ReadTheDocs: https://stackoverflow.com/a/68008428
 docutils==0.16.0
 
-# Packages used for CI tests.
-pytest
-pytest-xdist
-
-# Packages used for notebook execution
-matplotlib
-scikit-learn
-numpy
-
 # More
 myst-parser
 sphinxcontrib-autoyaml
 sphinxcontrib-youtube
-jax[cpu]
-jaxopt
-meshio[all]
-orix
-gmsh
-pyfiglet
-scikit-learn
-basix
+
