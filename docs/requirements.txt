@@ -25,4 +25,11 @@ numpy
 myst-parser
 sphinxcontrib-autoyaml
 sphinxcontrib-youtube
-
+jax[cpu]
+jaxopt
+meshio[all]
+orix
+gmsh
+pyfiglet
+scikit-learn
+basix
