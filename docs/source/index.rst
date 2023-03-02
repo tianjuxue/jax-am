@@ -57,10 +57,11 @@ Contents
    :caption: Contents:
 
    installation
-   quick_start
-   notes
-   tutorial
-   about
+   .. quick_start
+   .. notes
+   .. tutorial
+   .. api
+   .. about
 
 Indices and tables
 ==================
