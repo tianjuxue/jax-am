@@ -60,7 +60,6 @@ Contents
    quick_start
    notes
    tutorial
-   api
    about
 
 Indices and tables
