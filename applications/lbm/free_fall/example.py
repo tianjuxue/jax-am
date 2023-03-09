@@ -12,7 +12,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def case_study():
-    # h=1/2gt^2, h=0.5[m], t=0.319[s], simulation total t=0.4[s], output 40 steps, should see object on ground at the 16 step.
+    # h=1/2gt^2, h=0.5 [m], t=0.319 [s], simulation total t=0.4 [s], output 40 steps, should see object on ground at the 16 step.
     def initialize_phase(lattice_id, cell_centroids):
         id_x, id_y, id_z = to_id_xyz(lattice_id, lbm_args)
         flag_x = np.logical_and(cell_centroids[lattice_id, 0] > 0.2 * domain_x, cell_centroids[lattice_id, 0] < 0.8 * domain_x)
