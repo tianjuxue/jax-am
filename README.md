@@ -132,3 +132,28 @@ Please see the [web documentation](https://jax-am.readthedocs.io/en/latest/) for
 ## License
 
 This project is licensed under the GNU General Public License v3 - see the [LICENSE](https://www.gnu.org/licenses/) for details.
+
+## Citations
+
+If you found this library useful in academic or industry work, please consider 1) starring the project on Github, and 2) citing relevant papers:
+
+```bibtex
+@article{xue2022jax,
+  title={JAX-FEM: A differentiable GPU-accelerated 3D finite element solver for automatic inverse design and mechanistic data science},
+  author={Xue, Tianju and Liao, Shuheng and Gan, Zhengtao and Park, Chanwook and Xie, Xiaoyu and Liu, Wing Kam and Cao, Jian},
+  journal={arXiv preprint arXiv:2212.00964},
+  year={2022}
+}
+```
+```bibtex
+@article{xue2022physics,
+  title={Physics-embedded graph network for accelerating phase-field simulation of microstructure evolution in additive manufacturing},
+  author={Xue, Tianju and Gan, Zhengtao and Liao, Shuheng and Cao, Jian},
+  journal={npj Computational Materials},
+  volume={8},
+  number={1},
+  pages={201},
+  year={2022},
+  publisher={Nature Publishing Group UK London}
+}
+```
