@@ -280,22 +280,3 @@ def compute_aspect_ratios_and_vols(grain_vols, grain_centroids):
     print(len(grain_sum_aspect_ratios))
     return [grain_sum_vols, grain_sum_aspect_ratios]
 
-
-def walltime(data_dir=None):
-    def decorate(func):
-        def wrapper(*list_args, **keyword_args):
-            start_time = time.time()
-            return_values = func(*list_args, **keyword_args)
-            end_time = time.time()
-            time_elapsed = end_time - start_time
-            platform = jax.lib.xla_bridge.get_backend().platform
-            print(f"Time elapsed {time_elapsed} of function {func.__name__} on platform {platform}")
-            if data_dir is not None:
-                txt_dir = os.path.join(data_dir, f'txt')
-                os.makedirs(txt_dir, exist_ok=True)
-                with open(os.path.join(txt_dir, f"walltime_{platform}.txt"), 'w') as f:
-                    f.write(f'{start_time}, {end_time}, {time_elapsed}\n')
-            return return_values
-        return wrapper
-    return decorate
-

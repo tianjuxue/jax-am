@@ -8,7 +8,7 @@ import glob
 from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
-from jax_am.phase_field.utils import Field, walltime
+from jax_am.phase_field.utils import Field
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
 

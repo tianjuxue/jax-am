@@ -9,11 +9,11 @@ from functools import partial
 
 from jax_am.cfd.cfd_am import mesh3d, AM_3d
 
-from jax_am.phase_field.utils import Field, walltime
+from jax_am.phase_field.utils import Field
 from jax_am.phase_field.allen_cahn import PFSolver
 from jax_am.phase_field.neper import pre_processing
 
-from jax_am.common import box_mesh, json_parse, yaml_parse
+from jax_am.common import box_mesh, json_parse, yaml_parse, walltime
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
