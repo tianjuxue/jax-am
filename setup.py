@@ -36,6 +36,8 @@ if __name__=='__main__':
             "pyfiglet",
             "scikit-learn",
             "fenics-basix",
+            "petsc",
+            "petsc4py"
         ],
         url="https://github.com/tianjuxue/jax-am",
         license="GPL-3.0",
