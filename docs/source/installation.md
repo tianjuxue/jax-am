@@ -13,15 +13,16 @@ pip install .
 
 Several remarks:
 
-* If you are not familiar with conda, check [how set up a conda environment](#conda).
+* If you are not familiar with conda, check [how set up a conda environment](conda).
 
 
-* JAX-AM depends on JAX. If you want to use GPU, you need to [install the GPU version of JAX](https://github.com/google/jax#installation) properly. Before that, make sure [CUDA](#cuda) and [cuDNN](#cudnn) are properly configured on your machine.
+* JAX-AM depends on JAX. If you want to use GPU, you need to [install the GPU version of JAX](https://github.com/google/jax#installation) properly. Before that, make sure [CUDA](cuda) and [cuDNN](cudnn) are properly configured on your machine.
 
 
-* If you want to use the phase-field package of JAX-AM, [Neper](#neper) is required for polycrystal generation.
+* If you want to use the phase-field package of JAX-AM, [Neper](neper) is required for polycrystal generation.
 
-### Conda
+(conda)=
+## Conda
 
 [Conda](https://docs.conda.io/en/latest/?ref=learnubuntu.com) is an open source package management system and environment management system.The installer is offered as a shell script on [here](https://repo.anaconda.com/archive/). Find and download the version that matches your system and CPU architecture. Then make the script you download executable.
 
@@ -58,7 +59,8 @@ conda create -n myenv python=3.9
 conda activate myenv
 ```
 
-### CUDA 
+(cuda)=
+## CUDA 
 
 [Compute Unified Device Architecture (CUDA)](https://developer.nvidia.com/cuda-toolkit) is a parallel computing platform and application programming interface developed by Nvidia, which enables software developers to perform general-purpose computing using GPUs that support CUDA software. Before using JAX, you need to install CUDA first.
 
@@ -138,7 +140,8 @@ Cuda compilation tools, release 12.1, V12.1.66
 Build cuda_12.1.r12.1/compiler.32415258_0
 ```
 
-### cuDNN
+(cudnn)=
+## cuDNN
 
 [The NVIDIA CUDA Deep Neural Network library (cuDNN)](https://developer.nvidia.com/cudnn) is a GPU-accelerated library of primitives for deep neural networks. You need to install it after installing CUDA. Select the cuDNN version that matches your CUDA version from the [download page](https://developer.nvidia.com/rdp/cudnn-archive).
 
@@ -159,7 +162,8 @@ You can run the following command to check if cuDNN has been installed successfu
 cat /usr/local/cuda-12.0/include/cudnn.h | grep CUDNN_MAJOR -A 2
 ```
 
-### Neper
+(neper)=
+## Neper
 
 [Neper](https://neper.info/) is a free / open source software package for polycrystal generation and meshing. It can be used to generate polycrystals with a wide variety of morphological properties. Install the following components before downloading Neper.
 
