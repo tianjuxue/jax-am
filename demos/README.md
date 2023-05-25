@@ -1,3 +1,0 @@
-# Instructions
-
-Tutorials with documentation.
