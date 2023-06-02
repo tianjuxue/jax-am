@@ -12,10 +12,10 @@ from jax_am.fem.solver import ad_wrapper
 from jax_am.fem.utils import save_sol
 from jax_am.common import walltime
 
-from applications.fem.top_opt.fem_model import Elasticity
-from applications.fem.top_opt.mma import optimize
+from fem_model import Elasticity
+from mma import optimize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3" --> only active when cuda-device is visible
 
 
 def topology_optimization():
@@ -92,15 +92,24 @@ def topology_optimization():
         c, gradc = c.reshape((1,)), gradc[None, ...]
         return c, gradc
 
-    optimizationParams = {'maxIters':41, 'minIters':41, 'relTol':0.05}
+    #optimizationParams = {'maxIters':41, 'minIters':41, 'relTol':0.05}
+    optimizationParams = {'maxIters': 1, 'minIters': 1, 'relTol': 0.05}
     rho_ini = vf*np.ones((len(problem.flex_inds), 1))
     _, mma_walltime = walltime(os.path.join(data_path, 'txt'))(optimize)(problem, rho_ini, optimizationParams, 
         objectiveHandle, computeConstraints, numConstraints=1, movelimit=0.1)
     mma_walltime = onp.array(mma_walltime)
     print(mma_walltime)
     print(onp.sum(mma_walltime))
+
+    # Check whether the numpy data directory exists, and then store the outputs into it
+    if os.path.isdir(os.path.join(data_path, f"numpy")):
+        pass
+    else:
+        os.mkdir(os.path.join(data_path, f"numpy"))
+    # Store output files
     onp.save(os.path.join(data_path, f"numpy/{problem_name}_mma_walltime.npy"), mma_walltime)
     onp.save(os.path.join(data_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
+    
     print(f"Compliance = {J_total(np.ones((len(problem.flex_inds), 1)))} for full material")
 
 

@@ -102,6 +102,8 @@ def topology_optimization():
     optimizationParams = {'maxIters':51, 'minIters':51, 'relTol':0.05}
     rho_ini = jnp.hstack((vf*jnp.ones((num_flex, 1)), 0.5*jnp.ones((num_flex, 1))))  
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=1)
+    
+    # Check whether the numpy data directory exists, and then store the outputs into it
     if os.path.isdir(os.path.join(root_path, f"numpy")):
         pass
     else:

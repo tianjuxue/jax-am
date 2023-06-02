@@ -11,12 +11,11 @@ from jax_am.fem.generate_mesh import Mesh, box_mesh
 from jax_am.fem.solver import ad_wrapper
 from jax_am.fem.utils import save_sol
 
-from applications.fem.top_opt.fem_model import Elasticity
-from applications.fem.top_opt.mma import optimize
+from fem_model import Elasticity
+from mma import optimize
 
 
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2" --> Only activate when a CUDA device is present in the system
 
 
 class Plasticity(Elasticity):
@@ -205,8 +204,16 @@ def topology_optimization():
     optimizationParams = {'maxIters':51, 'minIters':51, 'relTol':0.05}
     rho_ini = np.hstack((vf*np.ones((num_flex, 1)), vy*np.ones((num_flex, 1))))  
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=2)
+
+    # Check whether the numpy data directory exists, and then store the outputs into it
+    if os.path.isdir(os.path.join(root_path, f"numpy")):
+        pass
+    else:
+        os.mkdir(os.path.join(root_path, f"numpy"))
+
+    # Save the outputs
     onp.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
-    # print(f"Compliance = {J_total(np.ones((num_flex, 1)))} for full material")
+    print(f"Compliance = {J_total(np.ones((num_flex, 1)))} for full material")
 
 
 if __name__=="__main__":
