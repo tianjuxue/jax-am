@@ -1,6 +1,6 @@
-import numpy as onp
+import numpy as np
 import jax
-import jax.numpy as np
+import jax.numpy as jnp
 import os
 import glob
 import os
@@ -11,10 +11,10 @@ from jax_am.fem.generate_mesh import Mesh, box_mesh
 from jax_am.fem.solver import ad_wrapper
 from jax_am.fem.utils import save_sol
 
-from applications.fem.top_opt.fem_model import Elasticity
-from applications.fem.top_opt.mma import optimize
+from fem_model import Elasticity
+from mma import optimize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1" --> Only activate in case a CUDA device is present
  
 def topology_optimization():
     problem_name = 'multi_material'
@@ -28,16 +28,16 @@ def topology_optimization():
     jax_mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict['hexahedron'])
 
     def fixed_location(point):
-        return np.isclose(point[0], 0., atol=1e-5)
+        return jnp.isclose(point[0], 0., atol=1e-5)
         
     def load_location(point):
-        return np.logical_and(np.isclose(point[0], 50., atol=1e-5), np.isclose(point[1], 15., atol=1.5))
+        return jnp.logical_and(jnp.isclose(point[0], 50., atol=1e-5), jnp.isclose(point[1], 15., atol=1.5))
 
     def dirichlet_val(point):
         return 0.
 
     def neumann_val(point):
-        return np.array([0., -1., 0.])
+        return jnp.array([0., -1., 0.])
 
     dirichlet_bc_info = [[fixed_location]*3, [0, 1, 2], [dirichlet_val]*3]
     neumann_bc_info = [[load_location], [neumann_val]]
@@ -66,7 +66,7 @@ def topology_optimization():
         vtu_path = os.path.join(root_path, f'vtk/{problem_name}/sol_{output_sol.counter:03d}.vtu')
         save_sol(problem, sol, vtu_path, cell_infos=[('theta1', problem.full_params[:, 0]), ('theta2', problem.full_params[:, 1])])
         print(f"compliance = {obj_val}")
-        print(f"max theta = {np.max(params)}, min theta = {np.min(params)}, mean theta = {np.mean(params)}")
+        print(f"max theta = {jnp.max(params)}, min theta = {jnp.min(params)}, mean theta = {jnp.mean(params)}")
         outputs.append(obj_val)
         output_sol.counter += 1
 
@@ -91,7 +91,7 @@ def topology_optimization():
 
             # g = np.sum(rho1*(rho2*1. + (1-rho2)*0.4))/num_flex/vf - 1.
 
-            g = np.sum(rho1*(rho2*1 + (1-rho2)*0.4))/num_flex/vf - 1.
+            g = jnp.sum(rho1*(rho2*1 + (1-rho2)*0.4))/num_flex/vf - 1.
 
             return g
 
@@ -100,9 +100,14 @@ def topology_optimization():
         return c, gradc
 
     optimizationParams = {'maxIters':51, 'minIters':51, 'relTol':0.05}
-    rho_ini = np.hstack((vf*np.ones((num_flex, 1)), 0.5*np.ones((num_flex, 1))))  
+    rho_ini = jnp.hstack((vf*jnp.ones((num_flex, 1)), 0.5*jnp.ones((num_flex, 1))))  
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=1)
-    onp.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
+    if os.path.isdir(os.path.join(root_path, f"numpy")):
+        pass
+    else:
+        os.mkdir(os.path.join(root_path, f"numpy"))
+    # Be aware that this continually appends to the possibly already existing .npy file
+    np.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), np.array(outputs), allow_pickle=False)
     # print(f"Compliance = {J_total(np.ones((num_flex, 1)))} for full material")
 
 
