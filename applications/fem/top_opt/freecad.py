@@ -11,8 +11,8 @@ from jax_am.fem.generate_mesh import Mesh, box_mesh
 from jax_am.fem.solver import solver, ad_wrapper
 from jax_am.fem.utils import save_sol
 
-from applications.fem.top_opt.fem_model import Elasticity
-from applications.fem.top_opt.mma import optimize
+from fem_model import Elasticity
+from mma import optimize
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 case_flag = 'freecad'
@@ -163,6 +163,14 @@ def computer_design():
     optimizationParams = {'maxIters':30, 'minIters':30, 'relTol':0.05}
     rho_ini = vf*np.ones((len(problem.flex_inds), 1))
     optimize(problem, rho_ini, optimizationParams, objectiveHandle, computeConstraints, numConstraints=1)
+
+    # Check whether the numpy data directory exists, and then store the outputs into it
+    if os.path.isdir(os.path.join(root_path, f"numpy")):
+        pass
+    else:
+        os.mkdir(os.path.join(root_path, f"numpy"))
+
+    # Save the output
     onp.save(os.path.join(root_path, f"numpy/{problem_name}_outputs.npy"), onp.array(outputs))
     print(f"Compliance = {J_total(np.ones((len(problem.flex_inds), 1)))} for full material")
 
