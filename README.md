@@ -136,16 +136,19 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 
 ## Citations
 
-If you found this library useful in academic or industry work, please consider 1) starring the project on Github, and 2) citing relevant papers:
+If you found this library useful in academic or industry work, we appreciate your support if you consider 1) starring the project on Github, and 2) citing relevant papers:
 
 ```bibtex
-@article{xue2022jax,
+@article{xue2023jax,
   title={JAX-FEM: A differentiable GPU-accelerated 3D finite element solver for automatic inverse design and mechanistic data science},
   author={Xue, Tianju and Liao, Shuheng and Gan, Zhengtao and Park, Chanwook and Xie, Xiaoyu and Liu, Wing Kam and Cao, Jian},
-  journal={arXiv preprint arXiv:2212.00964},
-  year={2022}
+  journal={Computer Physics Communications},
+  pages={108802},
+  year={2023},
+  publisher={Elsevier}
 }
 ```
+
 ```bibtex
 @article{xue2022physics,
   title={Physics-embedded graph network for accelerating phase-field simulation of microstructure evolution in additive manufacturing},
