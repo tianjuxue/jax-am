@@ -7,7 +7,8 @@ A GPU-accelerated differentiable simulation toolbox for additive manufacturing (
 # JAX-AM
 
 [![Doc](https://img.shields.io/readthedocs/jax-am)](https://jax-am.readthedocs.io/en/latest/)
-![PyPI](https://img.shields.io/pypi/v/jax-am) ![Github Star](https://img.shields.io/github/stars/tianjuxue/jax-am)
+![PyPI](https://img.shields.io/pypi/v/jax-am)
+![Github Star](https://img.shields.io/github/stars/tianjuxue/jax-am)
 ![Github Fork](https://img.shields.io/github/forks/tianjuxue/jax-am)
 ![License](https://img.shields.io/github/license/tianjuxue/jax-am)
 

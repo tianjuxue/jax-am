@@ -13,7 +13,7 @@ from jax_am.cfd.cfd_am import mesh3d, AM_3d
 from jax_am.common import box_mesh, json_parse
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 jax.config.update("jax_enable_x64", True)
 
@@ -45,10 +45,7 @@ def integrator():
     cfd_args['mesh_local'] = mesh_local
     cfd_args['meshio_mesh'] = meshio_mesh
     cfd_args['cp'] = lambda T: 0.2174*np.clip(T,300,1609)+370.
-    cfd_args['latent_heat'] = 270000.
     cfd_args['k'] = lambda T: 0.01674*np.clip(T,300,1563)+3.9
-    cfd_args['heat_source'] = 1
-    cfd_args['phi'] = 4e-7
     cfd_args['data_dir'] = data_dir
 
     cfd_solver = AM_3d(cfd_args)
@@ -62,7 +59,6 @@ def integrator():
 
         if (i + 1) % cfd_args['write_sol_interval'] == 0:
             cfd_solver.write_sols(i + 1)
-
 
 if __name__=="__main__":
     integrator()

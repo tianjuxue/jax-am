@@ -12,6 +12,8 @@
     "T_ref": 300,
     "Ts": 1563,
     "Tl": 1623,
+    "latent_heat": 270000,
+    "heat_source": 0, 
     "write_sol_interval": 100,
     "check_sol_interval": 4,
     "laser_path":

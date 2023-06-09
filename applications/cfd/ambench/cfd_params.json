@@ -2,7 +2,7 @@
     "rho": 8170,
     "visco": 7e-3,
     "Marangoni": -1e-4,
-    "dt": 2e-6,
+    "dt": 1e-6,
     "t_OFF": 0.00208333,
     "speed": 0.96,
     "X0": [5e-4, 2e-4, 4e-4],    
@@ -12,6 +12,9 @@
     "T_ref": 300,
     "Ts": 1533,
     "Tl": 1609,
+    "latent_heat": 270000,
+    "heat_source": 1,
+    "phi": 4e-16,
     "write_sol_interval": 50,
     "check_sol_interval": 5
 }

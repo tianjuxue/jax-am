@@ -158,7 +158,11 @@ class AM_3d():
             self.args['stefan_boltzmann'] = 5.67e-8
         if 'emissivity' not in self.args:
             self.args['emissivity'] = 0.
-         
+        if self.args['heat_source'] == 1:
+            print(f"Body heat souce model is used.")
+            assert 'phi' in self.args, f"Body heat source is used but necessary parameter 'phi' is not set!"
+        else:
+            print(f"Surface heat source model is used.")
 
     def time_integration(self):
         if self.args['heat_source'] == 1:
@@ -169,7 +173,7 @@ class AM_3d():
                                              bc_args = (self.t,self.T[:,:,-1,:]), cell_conn = self.cell_conn)
         fl0 = self.fluid_frac(self.T)
 
-#         self.solidID += fl0
+        # self.solidID += fl0
         self.solidID = np.maximum(self.solidID,fl0)
 
         x0, x1, y0, y1, z0, z1 = self.get_moving_box_boundary(self.t)
@@ -188,7 +192,7 @@ class AM_3d():
         self.conv_T = self.conv_T.at[x0:x1, y0:y1, z0:z1].set(conv_T)
         self.t += self.args['dt']
         
-# #### iterative scheme as a comparsion with the Non-interative scheme (explicit convection)       
+# #### iterative scheme as a comparsion with the Non-iterative scheme (explicit convection)       
 #     def time_integration_iter(self,it=10):
 #         Q = self.get_body_heat_source(self.t)
         
@@ -265,7 +269,7 @@ class AM_3d():
         self.Q = self.T * 0.
 
     def eqn_V_init(self, args):
-        self.eqn_V = velosity_eqn(args)
+        self.eqn_V = velocity_eqn(args)
         self.eqn_V.bc_fn = self.get_vel_bc_fn()
         self.cell_conn_local = np.copy(args['mesh_local'].cell_conn)
 
@@ -341,8 +345,6 @@ class AM_3d():
                 np.zeros(self.msh.surf_set_num[4]),
                 q.flatten()
             ]
-
-
 
             if self.args['heat_source'] == 0:
                 xc = self.msh.surface[self.msh.surf_sets[-1]][:, 0]
@@ -523,7 +525,7 @@ class energy_eqn():
         return T.reshape(T0.shape), self.BCs, it
 
 
-class velosity_eqn():
+class velocity_eqn():
     def __init__(self, args):
 
         self.dt = args['dt']
@@ -768,7 +770,7 @@ def solver_linear(eqn,*args,tol=1e-6,precond=False,update=True,relative=False):
     if relative:
         b = b.at[0].set(0.)
 
-    # TODO(Tianju): Any way to detect if CG does not converge? The program can get stuck.
+    # TODO (Tianju): Any way to detect if CG does not converge? The program can get stuck.
     inc, info = jax.scipy.sparse.linalg.bicgstab(A_fn, b, M=preconditoner, x0=None, tol=tol,maxiter=10000) # bicgstab
     dofs =  dofs + inc
     
@@ -804,10 +806,8 @@ def solver_nonlinear(eqn,*args,init=None,tol=1e-5,max_it=50,relaxation=1.,precon
         b = -eqn.compute_residual(dofs,*args)
         return (dofs,b,it+1)
     
-
     it = 0
     inc = np.ones_like(dofs)
     dofs,b,it = jax.lax.while_loop(cond_fun, body_fun, (dofs,b,it))
 
-    
     return dofs,it

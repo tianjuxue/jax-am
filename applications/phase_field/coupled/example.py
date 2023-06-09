@@ -68,12 +68,6 @@ def coupled_integrator():
     cfd_args['mesh_local'] = mesh_local
     cfd_args['cp'] = lambda T: (0.2441*np.clip(T,300,1563)+338.39) 
     cfd_args['k'] = lambda T: 0.0163105*np.clip(T,300,1563)+4.5847
-    cfd_args['latent_heat'] = 270000.
-    cfd_args['heat_source'] = 0
-
-    # TODO: This parameter is useless if we use surface heat source
-    cfd_args['phi'] = 0.
-    
     cfd_args['data_dir'] = data_dir
     cfd_args['meshio_mesh'] = meshio_mesh
     assert cfd_args['dt'] >= pf_args['dt'], f"CFD time step must be greater than PF for intepolation"
