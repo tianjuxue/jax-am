@@ -1,6 +1,8 @@
 *reference/
 *.DS_Store
 *data/
+*output/
+*defcon/
 jax_am/fem/tests/*/jax_fem/*
 
 # Byte-compiled / optimized / DLL files
