@@ -66,7 +66,7 @@ def simulation():
 
     gamma_args = {}
 
-    #laser parameter
+    # laser parameter
     gamma_args['eta'] = 0.43
     gamma_args['r'] = 5e-5
     gamma_args['rho'] = 8440
