@@ -372,12 +372,12 @@ class AM_3d():
 
     def inspect_sol(self, step, num_steps):
         print(f"\nstep {step} of {num_steps}, unix timestamp = {time.time()}")
-        print(f"T_max:{self.T.max()}, vmax:{np.linalg.norm(self.vel,axis=3).max()}")
+        print(f"T_max:{self.T.max()}, vmax:{np.linalg.norm(self.vel,axis=3).max()}\n")
         if not np.all(np.isfinite(self.T)):          
             raise ValueError(f"Found np.inf or np.nan in T0 - stop the program")
 
     def write_sols(self, step):
-        print(f"\nWrite CFD sols to file...")
+        print(f"\nWrite CFD sols to file...\n")
         step = step // self.args['write_sol_interval']
         self.meshio_mesh.cell_data['T'] = [onp.array(self.T.reshape(-1, 1), dtype=onp.float32)]
         self.meshio_mesh.cell_data['vel'] = [onp.array(self.vel.reshape(-1, 3), dtype=onp.float32)]

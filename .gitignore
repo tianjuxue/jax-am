@@ -4,6 +4,7 @@
 *output/
 *defcon/
 *ecs/
+*debug/
 jax_am/fem/tests/*/jax_fem/*
 
 # Byte-compiled / optimized / DLL files

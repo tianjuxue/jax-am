@@ -174,13 +174,13 @@ class PFSolver:
         change_T = np.where(T >= self.pf_args['T_liquidus'], 1, 0)
         print(f"percent of change of orientations = {np.sum(change_eta)/len(change_eta)*100}%")
         print(f"percet of T >= T_liquidus = {np.sum(change_T)/len(change_T)*100}%")
-        print(f"max T = {np.max(T)}")
+        print(f"max T = {np.max(T)}\n")
  
         if not np.all(np.isfinite(pf_sol)):          
             raise ValueError(f"Found np.inf or np.nan in pf_sol - stop the program")
 
     def write_sols(self, pf_sol, T, step):
-        print(f"\nWrite phase-field sols to file...")
+        print(f"\nWrite phase-field sols to file...\n")
         step = step // self.pf_args['write_sol_interval']
 
         liquid = T.reshape(-1) > self.pf_args['T_liquidus']
