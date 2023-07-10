@@ -3,9 +3,9 @@
 *data/
 *output/
 *defcon/
-*ecs/
 *debug/
 jax_am/fem/tests/*/jax_fem/*
+applications/fem/aesthetic/input/models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
