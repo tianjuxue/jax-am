@@ -2,12 +2,12 @@ import os
 from jax_am.phase_field.utils import Field
 
 
-def pre_processing(pf_args):
+def pre_processing(pf_args, neper_path='neper'):
     """We use Neper to generate polycrystal structure.
     Neper has two major functions: generate a polycrystal structure, and mesh it.
     See https://neper.info/ for more information.
     """
-    neper_path = os.path.join(pf_args['data_dir'], f"neper")
+    neper_path = os.path.join(pf_args['data_dir'], neper_path)
     os.makedirs(neper_path, exist_ok=True)
 
     if not os.path.exists(os.path.join(neper_path, 'domain.msh')):
