@@ -147,7 +147,36 @@ class Field:
         plt.savefig(os.path.join(pf_pdf_folder, "ipf_legend.pdf"), bbox_inches='tight')
 
         self.unique_oris_rgb, self.unique_grain_directions = rgb, grain_directions
- 
+
+def generate_new_mesh(pf_args, ori2, polycrystal, layer):
+    """
+    Generate one new layer to model multi-layer polycrystal
+    """
+    polycrystal_next = Field(pf_args, ori2)
+    # 通过改变晶粒的编号信息偏移晶粒的位置，使其位于之前的晶粒上方
+    polycrystal_next.mesh.points[:, 2] = polycrystal_next.mesh.points[:, 2] + pf_args['domain_z']*layer
+    polycrystal_next.mesh.cells[0].data = polycrystal_next.mesh.cells[0].data + len(polycrystal_next.mesh.points)*layer
+    polycrystal_next.centroids[:, 2] = polycrystal_next.centroids[:, 2] + pf_args['domain_z']*layer
+    # 合并points
+    polycrystal_next.mesh.points = onp.concatenate(
+        (polycrystal.mesh.points, polycrystal_next.mesh.points), axis=0)
+    # 合并cells
+    polycrystal_next.mesh.cells[0].data = onp.concatenate(
+        (polycrystal.mesh.cells[0].data, polycrystal_next.mesh.cells[0].data), axis=0)
+    # 合并三个编号
+    polycrystal_next.mesh.cell_data['gmsh:physical'][0] = onp.concatenate(
+        (polycrystal.mesh.cell_data['gmsh:physical'][0], polycrystal_next.mesh.cell_data['gmsh:physical'][0]),
+        axis=0)
+    polycrystal_next.mesh.cell_data['gmsh:geometrical'][0] = onp.concatenate(
+        (polycrystal.mesh.cell_data['gmsh:geometrical'][0], polycrystal_next.mesh.cell_data['gmsh:geometrical'][0]),
+        axis=0)
+    polycrystal_next.mesh.cell_data['grain_inds'][0] = onp.concatenate(
+        (polycrystal.mesh.cell_data['grain_inds'][0], polycrystal_next.mesh.cell_data['grain_inds'][0]), axis=0)
+    # 合并晶粒取向
+    polycrystal_next.cell_ori_inds = onp.concatenate((polycrystal.cell_ori_inds, polycrystal_next.cell_ori_inds), axis=0)
+    # 合并每个单元中心点信息
+    polycrystal_next.centroids = onp.concatenate((polycrystal.centroids, polycrystal_next.centroids), axis=0)
+    return polycrystal_next
 
 def process_eta(pf_args):
     step = 13
