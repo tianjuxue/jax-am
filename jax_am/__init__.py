@@ -1,4 +1,4 @@
-"""JAX-AM 
+"""JAX-AM
 
 Description
 -----------
@@ -29,3 +29,4 @@ Contact
 
 __version__ = "0.0.3"
 
+from . import logging_config  # noqa: F401
