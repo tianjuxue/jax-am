@@ -4,8 +4,7 @@ import logging
 logger = logging.getLogger()
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 logging.getLogger("jax").setLevel(logging.ERROR)
-logging.getLogger("rocm").setLevel(logging.ERROR)
-logging.getLogger("tpu").setLevel(logging.ERROR)
+
 
 logger.setLevel(logging.INFO)
 

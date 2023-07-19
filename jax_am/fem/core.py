@@ -104,11 +104,11 @@ class FEM:
         self.points = self.mesh.points
         self.cells = self.mesh.cells
         self.num_cells = len(self.cells)
-        self.num_total_nodes = len(self.mesh.points)
+        self.num_total_nodes = len(self.points)
         self.num_total_dofs = self.num_total_nodes * self.vec
 
         start = time.time()
-        logging.info(f"Computing shape function values, gradients, etc.")
+        logger.info(f"Computing shape function values, gradients, etc.")
 
         self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(
             self.ele_type)
@@ -135,8 +135,8 @@ class FEM:
         self.internal_vars = {}
         self.compute_Neumann_boundary_inds()
 
-        logging.info(f"Done pre-computations, took {compute_time} [s]")
-        logging.info(
+        logger.info(f"Done pre-computations, took {compute_time} [s]")
+        logger.info(
             f"Solving a problem with {len(self.cells)} cells, {self.num_total_nodes}x{self.vec} = {self.num_total_dofs} dofs."
         )
 
@@ -294,20 +294,27 @@ class FEM:
         node_inds_list = []
         vec_inds_list = []
         vals_list = []
+
         if dirichlet_bc_info is not None:
+            # Unpack dirichlet_bc_info
             location_fns, vecs, value_fns = dirichlet_bc_info
-            assert len(location_fns) == len(value_fns) and len(
-                value_fns) == len(vecs)
-            for i in range(len(location_fns)):
-                node_inds = onp.argwhere(
-                    jax.vmap(location_fns[i])(self.mesh.points)).reshape(-1)
-                vec_inds = onp.ones_like(node_inds, dtype=onp.int32) * vecs[i]
-                values = jax.vmap(value_fns[i])(
-                    self.mesh.points[node_inds].reshape(-1,
-                                                        self.dim)).reshape(-1)
+            if len(location_fns) != len(vecs) != len(value_fns):
+                raise ValueError("All lists in dirichlet_bc_info must be the"
+                                 " same length.")
+
+            # For each location function, find the indices of the nodes that
+            # satisfy the location function, vector indices, and the
+            # corresponding Dirichlet values
+
+            for i, (location_fn, vec, value_fn) in enumerate(zip(location_fns, vecs, value_fns)):
+                node_inds = onp.argwhere(jax.vmap(location_fn)(self.points)).reshape(-1)
+                vec_inds = onp.ones_like(node_inds, dtype=onp.int32) * vec
+                values = jax.vmap(value_fn)(self.points[node_inds].reshape(-1, self.dim)).reshape(-1)
+
                 node_inds_list.append(node_inds)
                 vec_inds_list.append(vec_inds)
                 vals_list.append(values)
+
         return node_inds_list, vec_inds_list, vals_list
 
     def update_Dirichlet_boundary_conditions(self, dirichlet_bc_info):
@@ -374,12 +381,12 @@ class FEM:
             boundary_inds_list[k][i, 0] returns the global cell index of the ith selected face of boundary subset k
             boundary_inds_list[k][i, 1] returns the local face index of the ith selected face of boundary subset k
         """
-        cell_points = onp.take(self.points, self.cells,
-                               axis=0)  # (num_cells, num_nodes, dim)
-        cell_face_points = onp.take(
-            cell_points, self.face_inds,
-            axis=1)  # (num_cells, num_faces, num_face_nodes, dim)
+        # (num_cells, num_nodes, dim)
+        cell_points = onp.take(self.points, self.cells, axis=0)
+        # (num_cells, num_faces, num_face_nodes, dim)
+        cell_face_points = onp.take(cell_points, self.face_inds, axis=1)
         boundary_inds_list = []
+
         for i in range(len(location_fns)):
             vmap_location_fn = jax.vmap(location_fns[i])
 
@@ -389,8 +396,8 @@ class FEM:
 
             vvmap_on_boundary = jax.vmap(jax.vmap(on_boundary))
             boundary_flags = vvmap_on_boundary(cell_face_points)
-            boundary_inds = onp.argwhere(
-                boundary_flags)  # (num_selected_faces, 2)
+            # (num_selected_faces, 2)
+            boundary_inds = onp.argwhere(boundary_flags)
             boundary_inds_list.append(boundary_inds)
         return boundary_inds_list
 
@@ -798,7 +805,7 @@ class FEM:
         return res
 
     def compute_residual_vars(self, sol, **internal_vars):
-        logging.info(f"Computing cell residual...")
+        logger.info(f"Computing cell residual...")
         cells_sol = sol[self.cells]  # (num_cells, num_nodes, vec)
         weak_form = self.split_and_compute_cell(
             cells_sol, np, False,
@@ -807,22 +814,28 @@ class FEM:
                                                  **internal_vars)
 
     def compute_newton_vars(self, sol, **internal_vars):
-        logging.info(f"Computing cell Jacobian and cell residual...")
+        logger.info(f"Computing cell Jacobian and cell residual...")
         cells_sol = sol[self.cells]  # (num_cells, num_nodes, vec)
         # (num_cells, num_nodes, vec), (num_cells, num_nodes, vec, num_nodes, vec)
         weak_form, cells_jac = self.split_and_compute_cell(
             cells_sol, onp, True, **internal_vars)
+
         V = cells_jac.reshape(-1)
         inds = (self.vec * self.cells[:, :, None] +
                 onp.arange(self.vec)[None, None, :]).reshape(
                     len(self.cells), -1)
+
         I = onp.repeat(inds[:, :, None], self.num_nodes * self.vec,
                        axis=2).reshape(-1)
         J = onp.repeat(inds[:, None, :], self.num_nodes * self.vec,
                        axis=1).reshape(-1)
-        self.I = I
-        self.J = J
-        self.V = V
+
+        # TODO: Replace this with a sparse matrix representation - less memory
+        # intensive
+        # self.I = I
+        # self.J = J
+        # self.V = V
+
 
         if self.cauchy_bc_info is not None:
             D_face, selected_cells = self.compute_face(cells_sol, onp, True)
@@ -836,9 +849,14 @@ class FEM:
             J_face = onp.repeat(inds_face[:, None, :],
                                 self.num_nodes * self.vec,
                                 axis=1).reshape(-1)
-            self.I = onp.hstack((self.I, I_face))
-            self.J = onp.hstack((self.J, J_face))
-            self.V = onp.hstack((self.V, V_face))
+
+            # TODO: Same as above
+            I = onp.hstack((I, I_face))
+            J = onp.hstack((J, J_face))
+            V = onp.hstack((V, V_face))
+
+        self.A_sp_scipy = scipy.sparse.csr_array((V, (I, J)),
+                                           shape=(self.num_total_dofs, self.num_total_dofs))
 
         return self.compute_residual_vars_helper(sol, weak_form,
                                                  **internal_vars)
@@ -862,13 +880,9 @@ class FEM:
             for i in range(len(self.neumann_boundary_inds_list)):
                 print(f"\nNeumann Boundary part {i + 1} information:")
                 print(self.neumann_boundary_inds_list[i])
-                print(
-                    f"Array.shape = (num_selected_faces, 2) = {self.neumann_boundary_inds_list[i].shape}"
-                )
+                print(f"Array.shape = (num_selected_faces, 2) = {self.neumann_boundary_inds_list[i].shape}")
                 print(f"Interpretation:")
-                print(
-                    f"    Array[i, 0] returns the global cell index of the ith selected face"
-                )
+                print(f"    Array[i, 0] returns the global cell index of the ith selected face")
                 print(
                     f"    Array[i, 1] returns the local face index of the ith selected face"
                 )

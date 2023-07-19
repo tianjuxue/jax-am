@@ -6,14 +6,12 @@ from jax_am.fem.utils import save_sol
 from jax_am.fem.generate_mesh import box_mesh, get_meshio_cell_type, Mesh
 
 import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Control logging verbosity
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)  # Control logging verbosity
 
 
 class LinearElasticity(FEM):
-
     def get_tensor_map(self):
-
         def stress(u_grad):
             E = 70e3
             nu = 0.3
@@ -27,11 +25,11 @@ class LinearElasticity(FEM):
         return stress
 
 
-ele_type = 'TET10'
+ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 10., 2., 2.
-Nx, Ny, Nz = 25, 5, 5
+Nx, Ny, Nz = 100, 50, 50
 meshio_mesh = box_mesh(Nx=Nx,
                        Ny=Ny,
                        Nz=Nz,
