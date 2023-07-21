@@ -16,10 +16,10 @@ JAX-AM is a collection of several numerical tools, currently including __Discret
 
 Our vision is to share with the AM community a __free, open-source__ (under the GPL-3.0 License) software that facilitates the relevant computational research. In the JAX ecosystem, we hope to emphasize the potential of JAX for scientific computing. At the same time, AI-enabled research in AM can be made easy with JAX-AM. 
 
-Authors:
+<!-- Authors:
 * [Tianju Xue](https://tianjuxue.github.io/)
 * [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
-* [Zhengtao Gan](https://zgan.my.canva.site/)
+* [Zhengtao Gan](https://zgan.my.canva.site/) -->
 
 :fire: <u>***Join us for the development of JAX-AM!***</u> :rocket:
 
