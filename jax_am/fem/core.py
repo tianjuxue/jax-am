@@ -2,8 +2,9 @@ import numpy as onp
 import jax
 import jax.numpy as np
 from jax.experimental.sparse import BCOO
+from jax.experimental.maps import xmap, SerialLoop
 import scipy
-from functools import partial
+from functools import partial, wraps
 import sys
 import time
 import functools
@@ -513,11 +514,13 @@ class FEM:
             u_grads = cell_sol[None, :, :, None] * cell_shape_grads[:, :,
                                                                     None, :]
             u_grads = np.sum(u_grads, axis=1)  # (num_quads, vec, dim)
-            u_grads_reshape = u_grads.reshape(
-                -1, self.vec, self.dim)  # (num_quads, vec, dim)
+
+            # Here, we reshape the u_grads to be (num_quads, vec, dim) - to enable vmapping
+            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)  # (num_quads, vec, dim)
+
             # (num_quads, vec, dim)
-            u_physics = jax.vmap(tensor_map)(
-                u_grads_reshape, *cell_internal_vars).reshape(u_grads.shape)
+            u_physics = jax.vmap(tensor_map, )(u_grads_reshape, *cell_internal_vars).reshape(u_grads.shape)
+
             # (num_quads, num_nodes, vec, dim) -> (num_nodes, vec) -> (num_nodes, vec)
             val = np.sum(u_physics[:, None, :, :] * cell_v_grads_JxW,
                          axis=(0, -1))
@@ -569,30 +572,146 @@ class FEM:
 
         return [mass_internal_vars, laplace_internal_vars]
 
-    @timeit
-    def split_and_compute_cell(self, cells_sol, np_version, jac_flag,
+    def split_and_compute_cell(self,
+                               cells_sol,
+                               np_version,
+                               jac_flag,
                                **internal_vars):
 
+        """
+        This function splits the computation for each cell and performs these
+        computations in batches to optimize memory usage. The computations it
+        performs involve applying a kernel function to a set of inputs,
+        potentially deriving the Jacobian of the function as well. The kernel
+        function to use is determined based on the internal variables provided.
+
+        Parameters: cells_sol : ndarray
+            A solution array with data related to cells.
+
+        np_version : module
+            The numpy version to use for computation, which can be either
+            jax.numpy or numpy. jax.numpy allows for automatic differentiation
+            but uses GPU memory, while numpy saves GPU memory but doesn't
+            support automatic differentiation.
+
+        jac_flag : bool
+            A flag indicating whether to compute the Jacobian. If set to True,
+            the function computes the Jacobian and returns it along with the
+            computed values.
+
+        internal_vars : dict
+            A dictionary of internal variables. These are unpacked and used in
+            the computations.
+
+        Returns: values : ndarray
+            The results of the computation for each cell.
+
+        jacs : ndarray (only if jac_flag is True)
+            The Jacobians computed for each cell.
+
+        The function handles the computation in batches to avoid out-of-memory
+        errors. The number of cells can be large, and computing them all at
+        once can exceed available memory. Therefore, the function splits the
+        computation into smaller batches and performs each computation
+        separately.
+        """
+
+        # Custom functions for calculating jacobian and value in one pass.
+        # JAX does not support this operation internally - authors chose not to
+        # implement this themselves because in most cases, the cost of
+        # calculating the Jacobian is going to dominate the cost of evaluating
+        # the function, so it can be feasible to evaluate the function twice.
+        # For discussion see: https://github.com/google/jax/pull/762
+
+        def duplicate_output(has_aux):
+            """
+            Decorator for duplicating the output of a pipeline function. This operation
+            enables the calculation of value and jacobians in a single function call.
+            The approach is based on the following discussion:
+
+            Parameters
+            ----------
+            has_aux : bool
+                Whether the function has auxiliary outputs.
+
+            Returns
+            -------
+            Callable[..., Dict[str, Any]]
+                The decorated pipeline function.
+            """
+
+            def decorator(func):
+                @wraps(func)
+                def wrapper(*args, **kwargs):
+                    if has_aux:
+                        out, aux = func(*args, **kwargs)
+                        return out, (out, aux)
+                    else:
+                        out = func(*args, **kwargs)
+                        return (out, out)
+
+                return wrapper
+            return decorator
+
+        # Note: this approach is slightly neater, because it allows handling
+        # of arbitrary input PyTrees as opposed to the previous approach
         def value_and_jacrev(f, x):
-            y, pullback = jax.vjp(f, x)
-            basis = np.eye(len(y.reshape(-1)),
-                           dtype=y.dtype).reshape(-1, *y.shape)
-            jac, = jax.vmap(pullback)(basis)
-            return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
-                                  self.vec)
+            d = duplicate_output(has_aux=False)(f)
+            jac, val = jax.jacrev(d, has_aux=True)(x)
+
+            return val, jac.reshape(self.num_nodes,
+                                    self.vec,
+                                    self.num_nodes,
+                                    self.vec)
 
         def value_and_jacfwd(f, x):
-            pushfwd = functools.partial(jax.jvp, f, (x, ))
-            basis = np.eye(len(x.reshape(-1)),
-                           dtype=x.dtype).reshape(-1, *x.shape)
-            y, jac = jax.vmap(pushfwd, out_axes=(None, -1))((basis, ))
-            return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
-                                  self.vec)
+            d = duplicate_output(has_aux=False)(f)
+            jac, val = jax.jacfwd(d, has_aux=True)(x)
+            return val, jac.reshape(self.num_nodes,
+                                    self.vec,
+                                    self.num_nodes,
+                                    self.vec)
+
+        # Previous implementation
+        #=======================================================================
+
+        # def value_and_jacrev(f, x):
+        #     """
+        #     Calculates both the value and the Jacobian of a function in one
+        #     pass using reverse-mode automatic differentiation.
+        #     """
+        #     y, pullback = jax.vjp(f, x)
+        #     basis = np.eye(len(y.reshape(-1)),
+        #                    dtype=y.dtype).reshape(-1, *y.shape)
+        #     jac, = jax.vmap(pullback)(basis)
+        #     return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
+        #                           self.vec)
+
+        # def value_and_jacfwd(f, x):
+        #     """
+        #     Calculates both the value and the Jacobian of a function in one
+        #     pass using forward-mode automatic differentiation.
+        #     """
+        #     pushfwd = functools.partial(jax.jvp, f, (x, ))
+        #     basis = np.eye(len(x.reshape(-1)),
+        #                    dtype=x.dtype).reshape(-1, *x.shape)
+        #     y, jac = jax.vmap(pushfwd, out_axes=(None, -1))((basis, ))
+        #     return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
+        #                           self.vec)
 
         def get_kernel_fn_cell():
+            """
+            Selects the 'kernel' function based on the attributes of the class.
+            The kernel function is the function that is applied to the cell
+            to compute the values and Jacobians.
+            """
+            def kernel(cell_sol,
+                       cell_shape_grads,
+                       cell_JxW,
+                       cell_v_grads_JxW,
+                       cell_mass_internal_vars,
+                       cell_laplace_internal_vars):
 
-            def kernel(cell_sol, cell_shape_grads, cell_JxW, cell_v_grads_JxW,
-                       cell_mass_internal_vars, cell_laplace_internal_vars):
                 if hasattr(self, 'get_mass_map'):
                     mass_kernel = self.get_mass_kernel(self.get_mass_map())
                     mass_val = mass_kernel(cell_sol, cell_JxW,
@@ -612,64 +731,99 @@ class FEM:
                 return laplace_val + mass_val
 
             def kernel_jac(cell_sol, *args):
-                kernel_partial = lambda cell_sol: kernel(cell_sol, *args)
-                return value_and_jacfwd(
-                    kernel_partial, cell_sol
-                )  # kernel(cell_sol, *args), jax.jacfwd(kernel)(cell_sol, *args)
+                def kernel_partial(cell_sol):
+                    return kernel(cell_sol, *args)
+                return value_and_jacfwd(kernel_partial, cell_sol)
 
             return kernel, kernel_jac
 
+        # Select a kernel function based on the internal variables
         kernel, kernel_jac = get_kernel_fn_cell()
         fn = kernel_jac if jac_flag else kernel
+
+
+        # Parallelize (?) and vectorize the kernel function
         vmap_fn = jax.jit(jax.vmap(fn))
+
+        # Unpack the internal variables and pass them to the kernel function
         kernal_vars = self.unpack_kernels_vars(**internal_vars)
-        num_cuts = 20
-        if num_cuts > len(self.cells):
-            num_cuts = len(self.cells)
-        batch_size = len(self.cells) // num_cuts
-        input_collection = [
-            cells_sol, self.shape_grads, self.JxW, self.v_grads_JxW,
-            *kernal_vars
-        ]
+
+        #=======================================================================
+        # Experimental xmap implementation
+        # In the future, we may want to use xmap instead of vmap to perform
+        # the 'chunked' vmap. Since xmap is experimental, the code below
+        # is not fully operational (bug related to scan), and therefore it is
+        # commented out.
+
+        # num_chunks = 20
+        # chunked_fn = xmap(fn,
+        #                   in_axes=['batch', ...],
+        #                   out_axes=['batch', ...],
+        #                   axis_resources={'batch': SerialLoop(num_chunks), })
+
+        #=======================================================================
+
+        # Chunk the computation into smaller batches to avoid out-of-memory
+        # errors
+
+        num_chunks = min(20, len(self.cells))
+        chunk_size = len(self.cells) // num_chunks
+
+        # PyTree of inputs to the kernel function
+        input_tree = [cells_sol,
+                      self.shape_grads,
+                      self.JxW,
+                      self.v_grads_JxW,
+                      *kernal_vars]
+
+        def _extract_input_subtree(input_tree,
+                                  chunk_id,
+                                  num_chunks,
+                                  chunk_size):
+            """
+            Helper for extracting a chunk of the input tree for processing.
+            """
+            if chunk_id < num_chunks - 1:
+                input_subtree = jax.tree_map(
+                    lambda x: x[chunk_id * chunk_size:(chunk_id + 1) *
+                                chunk_size], input_tree)
+            else:
+                input_subtree = jax.tree_map(
+                    lambda x: x[chunk_id * chunk_size:], input_tree)
+            return input_subtree
 
         if jac_flag:
             values = []
             jacs = []
-            for i in range(num_cuts):
-                if i < num_cuts - 1:
-                    input_col = jax.tree_map(
-                        lambda x: x[i * batch_size:(i + 1) * batch_size],
-                        input_collection)
-                else:
-                    input_col = jax.tree_map(lambda x: x[i * batch_size:],
-                                             input_collection)
 
-                val, jac = vmap_fn(*input_col)
-
+            # This code is intrinsically serial
+            for chunk_id in range(num_chunks):
+                input_subtree = _extract_input_subtree(input_tree,
+                                                       chunk_id,
+                                                       num_chunks,
+                                                       chunk_size)
+                val, jac = vmap_fn(*input_subtree)
                 values.append(val)
                 jacs.append(jac)
-
-            # np_version set to jax.numpy allows for auto diff, but uses GPU memory
-            # np_version set to ordinary numpy saves GPU memory, but can't use auto diff
             values = np_version.vstack(values)
             jacs = np_version.vstack(jacs)
+
             return values, jacs
         else:
             values = []
-            for i in range(num_cuts):
-                if i < num_cuts - 1:
-                    input_col = jax.tree_map(
-                        lambda x: x[i * batch_size:(i + 1) * batch_size],
-                        input_collection)
-                else:
-                    input_col = jax.tree_map(lambda x: x[i * batch_size:],
-                                             input_collection)
 
-                val = vmap_fn(*input_col)
+            for chunk_id in range(num_chunks):
+                input_subtree = _extract_input_subtree(input_tree,
+                                                       chunk_id,
+                                                       num_chunks,
+                                                       chunk_size)
+                val = vmap_fn(*input_subtree)
                 values.append(val)
             values = np_version.vstack(values)
             return values
 
+
+#===============================================================================
     def compute_face(self, cells_sol, np_version, jac_flag):
 
         def get_kernel_fn_face(cauchy_map):
@@ -700,8 +854,12 @@ class FEM:
                 boundary_inds)  # (num_selected_faces, num_face_quads)
             kernel, kernel_jac = get_kernel_fn_face(value_fns[i])
             fn = kernel_jac if jac_flag else kernel
+
+            # TODO: Nesting vmap and pmap
             vmap_fn = jax.jit(jax.vmap(fn))
-            val = vmap_fn(selected_cell_sols, selected_face_shape_vals,
+            # vmap_fn = jax.pmap(jax.vmap(fn))
+            val = vmap_fn(selected_cell_sols,
+                          selected_face_shape_vals,
                           nanson_scale)
             values.append(val)
             selected_cells.append(self.cells[boundary_inds[:, 0]])
