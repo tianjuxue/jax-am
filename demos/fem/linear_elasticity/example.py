@@ -29,7 +29,7 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 5., 5., 5.
-Nx, Ny, Nz = 10, 10, 10
+Nx, Ny, Nz = 20, 20, 20
 meshio_mesh = box_mesh(Nx=Nx,
                        Ny=Ny,
                        Nz=Nz,

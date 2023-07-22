@@ -2,7 +2,10 @@ import numpy as onp
 import jax
 import jax.numpy as np
 from jax.experimental.sparse import BCOO
-from jax.experimental.maps import xmap, SerialLoop
+
+# DEBUGGING ONLY:
+import os
+os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=3'
 import scipy
 from functools import partial, wraps
 import sys
@@ -19,7 +22,6 @@ from jax.config import config
 
 import logging
 logger = logging.getLogger(__name__)
-
 
 config.update("jax_enable_x64", True)
 
@@ -572,6 +574,7 @@ class FEM:
 
         return [mass_internal_vars, laplace_internal_vars]
 
+    @timeit
     def split_and_compute_cell(self,
                                cells_sol,
                                np_version,
@@ -672,33 +675,6 @@ class FEM:
                                     self.num_nodes,
                                     self.vec)
 
-        # Previous implementation
-        #=======================================================================
-
-        # def value_and_jacrev(f, x):
-        #     """
-        #     Calculates both the value and the Jacobian of a function in one
-        #     pass using reverse-mode automatic differentiation.
-        #     """
-        #     y, pullback = jax.vjp(f, x)
-        #     basis = np.eye(len(y.reshape(-1)),
-        #                    dtype=y.dtype).reshape(-1, *y.shape)
-        #     jac, = jax.vmap(pullback)(basis)
-        #     return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
-        #                           self.vec)
-
-        # def value_and_jacfwd(f, x):
-        #     """
-        #     Calculates both the value and the Jacobian of a function in one
-        #     pass using forward-mode automatic differentiation.
-        #     """
-        #     pushfwd = functools.partial(jax.jvp, f, (x, ))
-        #     basis = np.eye(len(x.reshape(-1)),
-        #                    dtype=x.dtype).reshape(-1, *x.shape)
-        #     y, jac = jax.vmap(pushfwd, out_axes=(None, -1))((basis, ))
-        #     return y, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
-        #                           self.vec)
-
         def get_kernel_fn_cell():
             """
             Selects the 'kernel' function based on the attributes of the class.
@@ -741,12 +717,8 @@ class FEM:
         kernel, kernel_jac = get_kernel_fn_cell()
         fn = kernel_jac if jac_flag else kernel
 
-
-        # Parallelize (?) and vectorize the kernel function
-        vmap_fn = jax.jit(jax.vmap(fn))
-
         # Unpack the internal variables and pass them to the kernel function
-        kernal_vars = self.unpack_kernels_vars(**internal_vars)
+        kernel_vars = self.unpack_kernels_vars(**internal_vars)
 
         #=======================================================================
         # Experimental xmap implementation
@@ -761,67 +733,134 @@ class FEM:
         #                   out_axes=['batch', ...],
         #                   axis_resources={'batch': SerialLoop(num_chunks), })
 
-        #=======================================================================
+        #======================================================================
 
-        # Chunk the computation into smaller batches to avoid out-of-memory
-        # errors
+        # TODO: Does not work when num_cells is not divisible by n_devices
+        n_devices = jax.device_count()
+        logger.debug(f"Using {n_devices} devices in split_and_compute_cell")
+        # Total number of chunks - this is dictated by the memory
+        n_chunks_total = 20
 
-        num_chunks = min(20, len(self.cells))
-        chunk_size = len(self.cells) // num_chunks
+        # Having a number of chunks divisible by the number of devices is
+        # good for load balancing.
 
-        # PyTree of inputs to the kernel function
-        input_tree = [cells_sol,
+        # Ensure n_chunks_total is at least n_devices and a multiple of n_devices
+        n_chunks_total = max(n_devices, (n_chunks_total // n_devices) * n_devices)
+
+        logger.debug(f"Total num of chunks is {n_chunks_total}")
+
+        input_data = [cells_sol,
                       self.shape_grads,
                       self.JxW,
                       self.v_grads_JxW,
-                      *kernal_vars]
+                      *kernel_vars]
 
-        def _extract_input_subtree(input_tree,
-                                  chunk_id,
-                                  num_chunks,
-                                  chunk_size):
-            """
-            Helper for extracting a chunk of the input tree for processing.
-            """
+        n_cells = len(cells_sol)
+
+
+        # Pad the data to be divisible by the number of devices
+        padding_size = (-n_cells % n_devices) % n_devices
+
+        logger.debug(f"Padding size is {padding_size}")
+
+        target_size = n_cells + padding_size
+
+        logger.debug(f"Size after padding is {target_size}")
+
+        n_cells_per_device = target_size // n_devices
+
+        logger.debug(f"Num cells per device (after padding) is {n_cells_per_device}")
+
+        if n_devices > 1:
+            # Pad the data to be divisible by the number of devices
+            padding_size = (-n_cells % n_devices) % n_devices
+            target_size = n_cells + padding_size
+            n_cells_per_device = target_size // n_devices
+
+            def _pad_and_reshape(x):
+                # Pad the arrays with zeros
+                pad_width = [(0, 0)] * np.ndim(x)
+                pad_width[0] = (0, padding_size)
+                x_padded = np.pad(x, pad_width)
+                device_shape = (n_devices, n_cells_per_device)
+                logger.debug(f"Device shape is {device_shape}")
+                x_reshaped = x_padded.reshape(device_shape + x_padded.shape[1:])
+                return x_reshaped
+
+            def _remove_padding(x):
+                # Reshape to the original shape
+                x = x.reshape(-1, *x.shape[2:])
+                # Compute how much to slice off
+                slice_end = -padding_size if padding_size else None
+                logger.debug(f"Before unpadding, shape is {x.shape}")
+                x_unpadded = x[:slice_end]
+                logger.debug(f"After unpadding, shape is {x_unpadded.shape}")
+
+                return x_unpadded
+
+            # Pad and reshape to distribute across devices
+            input_data = jax.tree_map(_pad_and_reshape, input_data)
+
+        def _extract_data_chunk(input_data, chunk_id, chunk_size, num_chunks):
+            start = chunk_id * chunk_size
             if chunk_id < num_chunks - 1:
-                input_subtree = jax.tree_map(
-                    lambda x: x[chunk_id * chunk_size:(chunk_id + 1) *
-                                chunk_size], input_tree)
-            else:
-                input_subtree = jax.tree_map(
-                    lambda x: x[chunk_id * chunk_size:], input_tree)
-            return input_subtree
+                end = (chunk_id + 1) * chunk_size
+            else:  # For the last chunk, take all remaining elements
+                end = None
+            data_chunk = jax.tree_map(lambda x: x[start:end], input_data)
+            return data_chunk
+
+        def chunked_vmap(f, num_chunks):
+            def chunked_fn(input_data):
+                # Check the size of the first argument
+                n_elements = input_data[0].shape[0]
+                chunk_size = n_elements // num_chunks
+
+                values = []
+                jacs = []
+                for chunk_id in range(num_chunks):
+                    # Extract chunk
+                    data_chunk = _extract_data_chunk(input_data, chunk_id, chunk_size, num_chunks)
+
+                    # Apply original function to the chunk
+                    if jac_flag:
+                        value, jac = jax.vmap(f)(*data_chunk)
+                        logger.debug(f"values shape is {value.shape}")
+                        logger.debug(f"jacs shape is {jac.shape}")
+                        values.append(value)
+                        jacs.append(jac)
+                    else:
+                        value = jax.vmap(f)(*data_chunk)
+                        values.append(value)
+                if jac_flag:
+                    vals = jax.lax.concatenate(values, 0)
+                    jacs = jax.lax.concatenate(jacs, 0)
+                    return vals, jacs
+                else:
+                    return jax.lax.concatenate(value, 0)
+            return chunked_fn
+
+        n_chunks_per_device = n_chunks_total // n_devices
+        chunked_vmap_fn = chunked_vmap(fn, n_chunks_per_device)
+        apply_fn = jax.pmap(chunked_vmap_fn) if n_devices > 1 else chunked_vmap_fn
+        # PyTree of inputs to the kernel function
 
         if jac_flag:
-            values = []
-            jacs = []
+            values, jacs = apply_fn(input_data)
+            logger.debug(f"Shape coming out from apply_fn is {values.shape}")
+            if n_devices > 1:
+                values = _remove_padding(values)
+                jacs = _remove_padding(jacs)
 
-            # This code is intrinsically serial
-            for chunk_id in range(num_chunks):
-                input_subtree = _extract_input_subtree(input_tree,
-                                                       chunk_id,
-                                                       num_chunks,
-                                                       chunk_size)
-                val, jac = vmap_fn(*input_subtree)
-                values.append(val)
-                jacs.append(jac)
-            values = np_version.vstack(values)
-            jacs = np_version.vstack(jacs)
-
+            logger.debug(f"Reference values shape is {values.shape}")
             return values, jacs
         else:
-            values = []
+            values = apply_fn(input_data)
+            if n_devices > 1:
+                values = _remove_padding(values)
 
-            for chunk_id in range(num_chunks):
-                input_subtree = _extract_input_subtree(input_tree,
-                                                       chunk_id,
-                                                       num_chunks,
-                                                       chunk_size)
-                val = vmap_fn(*input_subtree)
-                values.append(val)
-            values = np_version.vstack(values)
+            logger.debug(f"Reference values shape is {values.shape}")
             return values
-
 
 #===============================================================================
     def compute_face(self, cells_sol, np_version, jac_flag):
@@ -848,8 +887,7 @@ class FEM:
             selected_cell_sols = cells_sol[
                 boundary_inds[:, 0]]  # (num_selected_faces, num_nodes, vec))
             selected_face_shape_vals = self.face_shape_vals[
-                boundary_inds[:,
-                              1]]  # (num_selected_faces, num_face_quads, num_nodes)
+                boundary_inds[:, 1]]  # (num_selected_faces, num_face_quads, num_nodes)
             _, nanson_scale = self.get_face_shape_grads(
                 boundary_inds)  # (num_selected_faces, num_face_quads)
             kernel, kernel_jac = get_kernel_fn_face(value_fns[i])

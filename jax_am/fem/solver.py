@@ -244,8 +244,6 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
 
 
 def get_A_fn(problem, use_petsc):
-
-    logger.info(f"Total number of dofs is {problem.num_total_dofs} ")
     A_sp_scipy = problem.A_sp_scipy
 
     # A_sp_scipy = scipy.sparse.csr_array(
