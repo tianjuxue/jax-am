@@ -1,3 +1,15 @@
+import logging
+from jax.config import config
+from jax_am.fem.basis import get_face_shape_vals_and_grads, get_shape_vals_and_grads
+from jax_am.fem.generate_mesh import Mesh
+from jax_am.common import timeit
+from typing import Any, Callable, Optional, List, Union
+from dataclasses import dataclass
+import functools
+import time
+import sys
+from functools import partial, wraps
+import scipy
 import numpy as onp
 import jax
 import jax.numpy as np
@@ -5,22 +17,9 @@ from jax.experimental.sparse import BCOO
 
 # DEBUGGING ONLY:
 import os
-os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=32'
-import scipy
-from functools import partial, wraps
-import sys
-import time
-import functools
-from dataclasses import dataclass
-from typing import Any, Callable, Optional, List, Union
 
-from jax_am.common import timeit
-from jax_am.fem.generate_mesh import Mesh
-from jax_am.fem.basis import get_face_shape_vals_and_grads, get_shape_vals_and_grads
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=1"
 
-from jax.config import config
-
-import logging
 logger = logging.getLogger(__name__)
 
 config.update("jax_enable_x64", True)
@@ -88,10 +87,11 @@ class FEM:
     additional_info : Any
         Other information that the FEM solver should know
     """
+
     mesh: Mesh
     vec: int
     dim: int
-    ele_type: str = 'HEX8'
+    ele_type: str = "HEX8"
     dirichlet_bc_info: Optional[List[Union[List[Callable], List[int],
                                            List[Callable]]]] = None
     periodic_bc_info: Optional[List[Union[List[Callable], List[Callable],
@@ -113,24 +113,37 @@ class FEM:
         start = time.time()
         logger.info(f"Computing shape function values, gradients, etc.")
 
-        self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(
-            self.ele_type)
-        self.face_shape_vals, self.face_shape_grads_ref, self.face_quad_weights, self.face_normals, self.face_inds \
-        = get_face_shape_vals_and_grads(self.ele_type)
+        (
+            self.shape_vals,
+            self.shape_grads_ref,
+            self.quad_weights,
+        ) = get_shape_vals_and_grads(self.ele_type)
+        (
+            self.face_shape_vals,
+            self.face_shape_grads_ref,
+            self.face_quad_weights,
+            self.face_normals,
+            self.face_inds,
+        ) = get_face_shape_vals_and_grads(self.ele_type)
         self.num_quads = self.shape_vals.shape[0]
         self.num_nodes = self.shape_vals.shape[1]
         self.num_faces = self.face_shape_vals.shape[0]
         self.shape_grads, self.JxW = self.get_shape_grads()
 
-        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(
-            self.dirichlet_bc_info)
-        self.p_node_inds_list_A, self.p_node_inds_list_B, self.p_vec_inds_list = self.periodic_boundary_conditions(
-        )
+        (
+            self.node_inds_list,
+            self.vec_inds_list,
+            self.vals_list,
+        ) = self.Dirichlet_boundary_conditions(self.dirichlet_bc_info)
+        (
+            self.p_node_inds_list_A,
+            self.p_node_inds_list_B,
+            self.p_vec_inds_list,
+        ) = self.periodic_boundary_conditions()
 
         # (num_cells, num_quads, num_nodes, 1, dim)
-        self.v_grads_JxW = self.shape_grads[:, :, :,
-                                            None, :] * self.JxW[:, :, None,
-                                                                None, None]
+        self.v_grads_JxW = (self.shape_grads[:, :, :, None, :] *
+                            self.JxW[:, :, None, None, None])
 
         end = time.time()
         compute_time = end - start
@@ -146,8 +159,7 @@ class FEM:
         self.custom_init(*self.additional_info)
 
     def custom_init(self):
-        """Child class should override if more things need to be done in initialization
-        """
+        """Child class should override if more things need to be done in initialization"""
         pass
 
     def get_shape_grads(self):
@@ -168,10 +180,12 @@ class FEM:
         physical_coos = onp.take(self.points, self.cells,
                                  axis=0)  # (num_cells, num_nodes, dim)
         # (num_cells, num_quads, num_nodes, dim, dim) -> (num_cells, num_quads, 1, dim, dim)
-        jacobian_dx_deta = onp.sum(physical_coos[:, None, :, :, None] *
-                                   self.shape_grads_ref[None, :, :, None, :],
-                                   axis=2,
-                                   keepdims=True)
+        jacobian_dx_deta = onp.sum(
+            physical_coos[:, None, :, :, None] *
+            self.shape_grads_ref[None, :, :, None, :],
+            axis=2,
+            keepdims=True,
+        )
         jacobian_det = onp.linalg.det(
             jacobian_dx_deta)[:, :, 0]  # (num_cells, num_quads)
         jacobian_deta_dx = onp.linalg.inv(jacobian_dx_deta)
@@ -199,22 +213,23 @@ class FEM:
         nanson_scale : onp.ndarray
             (num_selected_faces, num_face_quads)
         """
-        physical_coos = onp.take(self.points, self.cells,
-                                 axis=0)  # (num_cells, num_nodes, dim)
-        selected_coos = physical_coos[
-            boundary_inds[:, 0]]  # (num_selected_faces, num_nodes, dim)
+        physical_coos = onp.take(self.points, self.cells, axis=0)
+        # (num_cells, num_nodes, dim)
+        selected_coos = physical_coos[boundary_inds[:, 0]]
+        # (num_selected_faces, num_nodes, dim)
         selected_f_shape_grads_ref = self.face_shape_grads_ref[
-            boundary_inds[:,
-                          1]]  # (num_selected_faces, num_face_quads, num_nodes, dim)
-        selected_f_normals = self.face_normals[
-            boundary_inds[:, 1]]  # (num_selected_faces, dim)
+            boundary_inds[:, 1]]
+        # (num_selected_faces, num_face_quads, num_nodes, dim)
+        selected_f_normals = self.face_normals[boundary_inds[:, 1]]
+        # (num_selected_faces, dim)
 
         # (num_selected_faces, 1, num_nodes, dim, 1) * (num_selected_faces, num_face_quads, num_nodes, 1, dim)
         # (num_selected_faces, num_face_quads, num_nodes, dim, dim) -> (num_selected_faces, num_face_quads, dim, dim)
         jacobian_dx_deta = onp.sum(
             selected_coos[:, None, :, :, None] *
             selected_f_shape_grads_ref[:, :, :, None, :],
-            axis=2)
+            axis=2,
+        )
         jacobian_det = onp.linalg.det(
             jacobian_dx_deta)  # (num_selected_faces, num_face_quads)
         jacobian_deta_dx = onp.linalg.inv(
@@ -231,7 +246,8 @@ class FEM:
         nanson_scale = onp.linalg.norm(
             (selected_f_normals[:, None, None, :] @ jacobian_deta_dx)[:, :,
                                                                       0, :],
-            axis=-1)
+            axis=-1,
+        )
         selected_weights = self.face_quad_weights[
             boundary_inds[:, 1]]  # (num_selected_faces, num_face_quads)
         nanson_scale = nanson_scale * jacobian_det * selected_weights
@@ -275,7 +291,8 @@ class FEM:
         physical_surface_quad_points = onp.sum(
             selected_face_shape_vals[:, :, :, None] *
             selected_coos[:, None, :, :],
-            axis=2)
+            axis=2,
+        )
         return physical_surface_quad_points
 
     def Dirichlet_boundary_conditions(self, dirichlet_bc_info):
@@ -309,10 +326,13 @@ class FEM:
             # satisfy the location function, vector indices, and the
             # corresponding Dirichlet values
 
-            for i, (location_fn, vec, value_fn) in enumerate(zip(location_fns, vecs, value_fns)):
-                node_inds = onp.argwhere(jax.vmap(location_fn)(self.points)).reshape(-1)
+            for i, (location_fn, vec,
+                    value_fn) in enumerate(zip(location_fns, vecs, value_fns)):
+                node_inds = onp.argwhere(jax.vmap(location_fn)(
+                    self.points)).reshape(-1)
                 vec_inds = onp.ones_like(node_inds, dtype=onp.int32) * vec
-                values = jax.vmap(value_fn)(self.points[node_inds].reshape(-1, self.dim)).reshape(-1)
+                values = jax.vmap(value_fn)(self.points[node_inds].reshape(
+                    -1, self.dim)).reshape(-1)
 
                 node_inds_list.append(node_inds)
                 vec_inds_list.append(vec_inds)
@@ -328,8 +348,11 @@ class FEM:
         ----------
         dirichlet_bc_info : [location_fns, vecs, value_fns]
         """
-        self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(
-            dirichlet_bc_info)
+        (
+            self.node_inds_list,
+            self.vec_inds_list,
+            self.vals_list,
+        ) = self.Dirichlet_boundary_conditions(dirichlet_bc_info)
 
     def periodic_boundary_conditions(self):
         p_node_inds_list_A = []
@@ -415,8 +438,8 @@ class FEM:
         integral = np.zeros((self.num_total_nodes, self.vec))
         if self.neumann_bc_info is not None:
             for i, boundary_inds in enumerate(self.neumann_boundary_inds_list):
-                if 'neumann' in internal_vars.keys():
-                    int_vars = internal_vars['neumann'][i]
+                if "neumann" in internal_vars.keys():
+                    int_vars = internal_vars["neumann"][i]
                 else:
                     int_vars = ()
                 # (num_cells, num_faces, num_face_quads, dim) -> (num_selected_faces, num_face_quads, dim)
@@ -440,15 +463,16 @@ class FEM:
                     self.cells, boundary_inds[:, 0],
                     axis=0)  # (num_selected_faces, num_nodes)
                 # (num_selected_faces, num_nodes, vec) -> (num_selected_faces*num_nodes, vec)
-                int_vals = np.sum(v_vals * traction[:, :, None, :] *
-                                  nanson_scale[:, :, None, None],
-                                  axis=1).reshape(-1, self.vec)
+                int_vals = np.sum(
+                    v_vals * traction[:, :, None, :] *
+                    nanson_scale[:, :, None, None],
+                    axis=1,
+                ).reshape(-1, self.vec)
                 integral = integral.at[subset_cells.reshape(-1)].add(int_vals)
         return integral
 
     def compute_Neumann_boundary_inds(self):
-        """Child class should override if internal variables exist
-        """
+        """Child class should override if internal variables exist"""
         if self.neumann_bc_info is not None:
             self.neumann_location_fns, self.neumann_value_fns = self.neumann_bc_info
             if self.neumann_location_fns is not None:
@@ -466,8 +490,8 @@ class FEM:
         rhs = np.zeros((self.num_total_nodes, self.vec))
         if self.source_info is not None:
             body_force_fn = self.source_info
-            physical_quad_points = self.get_physical_quad_points(
-            )  # (num_cells, num_quads, dim)
+            physical_quad_points = (self.get_physical_quad_points()
+                                    )  # (num_cells, num_quads, dim)
             body_force = jax.vmap(jax.vmap(body_force_fn))(
                 physical_quad_points)  # (num_cells, num_quads, vec)
             assert len(body_force.shape) == 3
@@ -518,10 +542,12 @@ class FEM:
             u_grads = np.sum(u_grads, axis=1)  # (num_quads, vec, dim)
 
             # Here, we reshape the u_grads to be (num_quads, vec, dim) - to enable vmapping
-            u_grads_reshape = u_grads.reshape(-1, self.vec, self.dim)  # (num_quads, vec, dim)
+            u_grads_reshape = u_grads.reshape(
+                -1, self.vec, self.dim)  # (num_quads, vec, dim)
 
             # (num_quads, vec, dim)
-            u_physics = jax.vmap(tensor_map, )(u_grads_reshape, *cell_internal_vars).reshape(u_grads.shape)
+            u_physics = jax.vmap(tensor_map, )(
+                u_grads_reshape, *cell_internal_vars).reshape(u_grads.shape)
 
             # (num_quads, num_nodes, vec, dim) -> (num_nodes, vec) -> (num_nodes, vec)
             val = np.sum(u_physics[:, None, :, :] * cell_v_grads_JxW,
@@ -539,9 +565,11 @@ class FEM:
             u_physics = jax.vmap(mass_map)(
                 u, *cell_internal_vars)  # (num_quads, vec)
             # (num_quads, 1, vec) * (num_quads, num_nodes, 1) * (num_quads, 1, 1) -> (num_nodes, vec)
-            val = np.sum(u_physics[:, None, :] * self.shape_vals[:, :, None] *
-                         cell_JxW[:, None, None],
-                         axis=0)
+            val = np.sum(
+                u_physics[:, None, :] * self.shape_vals[:, :, None] *
+                cell_JxW[:, None, None],
+                axis=0,
+            )
             return val
 
         return mass_kernel
@@ -554,33 +582,31 @@ class FEM:
                        axis=1)
             u_physics = jax.vmap(cauchy_map)(u)  # (num_face_quads, vec)
             # (num_face_quads, 1, vec) * (num_face_quads, num_nodes, 1) * (num_face_quads, 1, 1) -> (num_nodes, vec)
-            val = np.sum(u_physics[:, None, :] * face_shape_vals[:, :, None] *
-                         face_nanson_scale[:, None, None],
-                         axis=0)
+            val = np.sum(
+                u_physics[:, None, :] * face_shape_vals[:, :, None] *
+                face_nanson_scale[:, None, None],
+                axis=0,
+            )
             return val
 
         return cauchy_kernel
 
     def unpack_kernels_vars(self, **internal_vars):
-        if 'mass' in internal_vars.keys():
-            mass_internal_vars = internal_vars['mass']
+        if "mass" in internal_vars.keys():
+            mass_internal_vars = internal_vars["mass"]
         else:
             mass_internal_vars = ()
 
-        if 'laplace' in internal_vars.keys():
-            laplace_internal_vars = internal_vars['laplace']
+        if "laplace" in internal_vars.keys():
+            laplace_internal_vars = internal_vars["laplace"]
         else:
             laplace_internal_vars = ()
 
         return [mass_internal_vars, laplace_internal_vars]
 
     @timeit
-    def split_and_compute_cell(self,
-                               cells_sol,
-                               np_version,
-                               jac_flag,
+    def split_and_compute_cell(self, cells_sol, np_version, jac_flag,
                                **internal_vars):
-
         """
         This function splits the computation for each cell and performs these
         computations in batches to optimize memory usage. The computations it
@@ -619,6 +645,7 @@ class FEM:
         separately.
         """
 
+        # =======================================================================
         # Custom functions for calculating jacobian and value in one pass.
         # JAX does not support this operation internally - authors chose not to
         # implement this themselves because in most cases, the cost of
@@ -644,6 +671,7 @@ class FEM:
             """
 
             def decorator(func):
+
                 @wraps(func)
                 def wrapper(*args, **kwargs):
                     if has_aux:
@@ -654,6 +682,7 @@ class FEM:
                         return (out, out)
 
                 return wrapper
+
             return decorator
 
         # Note: this approach is slightly neater, because it allows handling
@@ -662,17 +691,13 @@ class FEM:
             d = duplicate_output(has_aux=False)(f)
             jac, val = jax.jacrev(d, has_aux=True)(x)
 
-            return val, jac.reshape(self.num_nodes,
-                                    self.vec,
-                                    self.num_nodes,
+            return val, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
                                     self.vec)
 
         def value_and_jacfwd(f, x):
             d = duplicate_output(has_aux=False)(f)
             jac, val = jax.jacfwd(d, has_aux=True)(x)
-            return val, jac.reshape(self.num_nodes,
-                                    self.vec,
-                                    self.num_nodes,
+            return val, jac.reshape(self.num_nodes, self.vec, self.num_nodes,
                                     self.vec)
 
         def get_kernel_fn_cell():
@@ -681,34 +706,41 @@ class FEM:
             The kernel function is the function that is applied to the cell
             to compute the values and Jacobians.
             """
-            def kernel(cell_sol,
-                       cell_shape_grads,
-                       cell_JxW,
-                       cell_v_grads_JxW,
-                       cell_mass_internal_vars,
-                       cell_laplace_internal_vars):
 
-                if hasattr(self, 'get_mass_map'):
+            def kernel(
+                cell_sol,
+                cell_shape_grads,
+                cell_JxW,
+                cell_v_grads_JxW,
+                cell_mass_internal_vars,
+                cell_laplace_internal_vars,
+            ):
+                if hasattr(self, "get_mass_map"):
                     mass_kernel = self.get_mass_kernel(self.get_mass_map())
                     mass_val = mass_kernel(cell_sol, cell_JxW,
                                            *cell_mass_internal_vars)
                 else:
-                    mass_val = 0.
+                    mass_val = 0.0
 
-                if hasattr(self, 'get_tensor_map'):
+                if hasattr(self, "get_tensor_map"):
                     laplace_kernel = self.get_laplace_kernel(
                         self.get_tensor_map())
-                    laplace_val = laplace_kernel(cell_sol, cell_shape_grads,
-                                                 cell_v_grads_JxW,
-                                                 *cell_laplace_internal_vars)
+                    laplace_val = laplace_kernel(
+                        cell_sol,
+                        cell_shape_grads,
+                        cell_v_grads_JxW,
+                        *cell_laplace_internal_vars,
+                    )
                 else:
-                    laplace_val = 0.
+                    laplace_val = 0.0
 
                 return laplace_val + mass_val
 
             def kernel_jac(cell_sol, *args):
+
                 def kernel_partial(cell_sol):
                     return kernel(cell_sol, *args)
+
                 return value_and_jacfwd(kernel_partial, cell_sol)
 
             return kernel, kernel_jac
@@ -720,7 +752,7 @@ class FEM:
         # Unpack the internal variables and pass them to the kernel function
         kernel_vars = self.unpack_kernels_vars(**internal_vars)
 
-        #=======================================================================
+        # =======================================================================
         # Experimental xmap implementation
         # In the future, we may want to use xmap instead of vmap to perform
         # the 'chunked' vmap. Since xmap is experimental, the code below
@@ -733,9 +765,8 @@ class FEM:
         #                   out_axes=['batch', ...],
         #                   axis_resources={'batch': SerialLoop(num_chunks), })
 
-        #======================================================================
+        # ======================================================================
 
-        # TODO: Does not work when num_cells is not divisible by n_devices
         n_devices = jax.device_count()
         logger.debug(f"Using {n_devices} devices in split_and_compute_cell")
         # Total number of chunks - this is dictated by the memory
@@ -745,31 +776,23 @@ class FEM:
         # good for load balancing.
 
         # Ensure n_chunks_total is at least n_devices and a multiple of n_devices
-        n_chunks_total = max(n_devices, (n_chunks_total // n_devices) * n_devices)
+        n_chunks_total = max(n_devices,
+                             (n_chunks_total // n_devices) * n_devices)
 
-        logger.debug(f"Total num of chunks is {n_chunks_total}")
-
-        input_data = [cells_sol,
-                      self.shape_grads,
-                      self.JxW,
-                      self.v_grads_JxW,
-                      *kernel_vars]
+        input_data = [
+            cells_sol,
+            self.shape_grads,
+            self.JxW,
+            self.v_grads_JxW,
+            *kernel_vars,
+        ]
 
         n_cells = len(cells_sol)
 
-
         # Pad the data to be divisible by the number of devices
         padding_size = (-n_cells % n_devices) % n_devices
-
-        logger.debug(f"Padding size is {padding_size}")
-
         target_size = n_cells + padding_size
-
-        logger.debug(f"Size after padding is {target_size}")
-
         n_cells_per_device = target_size // n_devices
-
-        logger.debug(f"Num cells per device (after padding) is {n_cells_per_device}")
 
         if n_devices > 1:
             # Pad the data to be divisible by the number of devices
@@ -783,8 +806,8 @@ class FEM:
                 pad_width[0] = (0, padding_size)
                 x_padded = np.pad(x, pad_width)
                 device_shape = (n_devices, n_cells_per_device)
-                logger.debug(f"Device shape is {device_shape}")
-                x_reshaped = x_padded.reshape(device_shape + x_padded.shape[1:])
+                x_reshaped = x_padded.reshape(device_shape +
+                                              x_padded.shape[1:])
                 return x_reshaped
 
             def _remove_padding(x):
@@ -792,9 +815,7 @@ class FEM:
                 x = x.reshape(-1, *x.shape[2:])
                 # Compute how much to slice off
                 slice_end = -padding_size if padding_size else None
-                logger.debug(f"Before unpadding, shape is {x.shape}")
                 x_unpadded = x[:slice_end]
-                logger.debug(f"After unpadding, shape is {x_unpadded.shape}")
 
                 return x_unpadded
 
@@ -811,6 +832,7 @@ class FEM:
             return data_chunk
 
         def chunked_vmap(f, num_chunks):
+
             def chunked_fn(input_data):
                 # Check the size of the first argument
                 n_elements = input_data[0].shape[0]
@@ -820,13 +842,12 @@ class FEM:
                 jacs = []
                 for chunk_id in range(num_chunks):
                     # Extract chunk
-                    data_chunk = _extract_data_chunk(input_data, chunk_id, chunk_size, num_chunks)
+                    data_chunk = _extract_data_chunk(input_data, chunk_id,
+                                                     chunk_size, num_chunks)
 
                     # Apply original function to the chunk
                     if jac_flag:
                         value, jac = jax.vmap(f)(*data_chunk)
-                        logger.debug(f"values shape is {value.shape}")
-                        logger.debug(f"jacs shape is {jac.shape}")
                         values.append(value)
                         jacs.append(jac)
                     else:
@@ -838,31 +859,31 @@ class FEM:
                     return vals, jacs
                 else:
                     return jax.lax.concatenate(value, 0)
+
             return chunked_fn
 
         n_chunks_per_device = n_chunks_total // n_devices
         chunked_vmap_fn = chunked_vmap(fn, n_chunks_per_device)
-        apply_fn = jax.pmap(chunked_vmap_fn) if n_devices > 1 else chunked_vmap_fn
+        apply_fn = jax.pmap(
+            chunked_vmap_fn) if n_devices > 1 else chunked_vmap_fn
         # PyTree of inputs to the kernel function
 
         if jac_flag:
             values, jacs = apply_fn(input_data)
-            logger.debug(f"Shape coming out from apply_fn is {values.shape}")
             if n_devices > 1:
                 values = _remove_padding(values)
                 jacs = _remove_padding(jacs)
 
-            logger.debug(f"Reference values shape is {values.shape}")
             return values, jacs
         else:
             values = apply_fn(input_data)
             if n_devices > 1:
                 values = _remove_padding(values)
 
-            logger.debug(f"Reference values shape is {values.shape}")
             return values
 
-#===============================================================================
+    # ===============================================================================
+
     def compute_face(self, cells_sol, np_version, jac_flag):
 
         def get_kernel_fn_face(cauchy_map):
@@ -887,7 +908,8 @@ class FEM:
             selected_cell_sols = cells_sol[
                 boundary_inds[:, 0]]  # (num_selected_faces, num_nodes, vec))
             selected_face_shape_vals = self.face_shape_vals[
-                boundary_inds[:, 1]]  # (num_selected_faces, num_face_quads, num_nodes)
+                boundary_inds[:,
+                              1]]  # (num_selected_faces, num_face_quads, num_nodes)
             _, nanson_scale = self.get_face_shape_grads(
                 boundary_inds)  # (num_selected_faces, num_face_quads)
             kernel, kernel_jac = get_kernel_fn_face(value_fns[i])
@@ -896,8 +918,7 @@ class FEM:
             # TODO: Nesting vmap and pmap
             vmap_fn = jax.jit(jax.vmap(fn))
             # vmap_fn = jax.pmap(jax.vmap(fn))
-            val = vmap_fn(selected_cell_sols,
-                          selected_face_shape_vals,
+            val = vmap_fn(selected_cell_sols, selected_face_shape_vals,
                           nanson_scale)
             values.append(val)
             selected_cells.append(self.cells[boundary_inds[:, 0]])
@@ -952,9 +973,11 @@ class FEM:
             boundary_inds[:,
                           1]]  # (num_selected_faces, num_face_quads, num_nodes)
         # (num_selected_faces, 1, num_nodes, vec) * (num_selected_faces, num_face_quads, num_nodes, 1) -> (num_selected_faces, num_face_quads, vec)
-        u = np.sum(selected_cell_sols[:, None, :, :] *
-                   selected_face_shape_vals[:, :, :, None],
-                   axis=2)
+        u = np.sum(
+            selected_cell_sols[:, None, :, :] *
+            selected_face_shape_vals[:, :, :, None],
+            axis=2,
+        )
         return u
 
     def sol_to_grad(self, sol):
@@ -972,9 +995,8 @@ class FEM:
             (num_cells, num_quads, vec, dim)
         """
         # (num_cells, 1, num_nodes, vec, 1) * (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, vec, dim)
-        u_grads = np.take(sol, self.cells,
-                          axis=0)[:, None, :, :,
-                                  None] * self.shape_grads[:, :, :, None, :]
+        u_grads = (np.take(sol, self.cells, axis=0)[:, None, :, :, None] *
+                   self.shape_grads[:, :, :, None, :])
         u_grads = np.sum(u_grads, axis=2)  # (num_cells, num_quads, vec, dim)
         return u_grads
 
@@ -991,9 +1013,9 @@ class FEM:
             res = res.at[selected_cells.reshape(-1)].add(values)
 
         self.body_force = self.compute_body_force_by_fn()
-        if 'body' in internal_vars.keys():
+        if "body" in internal_vars.keys():
             self.body_force = self.compute_body_force_by_sol(
-                internal_vars['body'], self.get_body_map())
+                internal_vars["body"], self.get_body_map())
 
         self.neumann = self.compute_Neumann_integral_vars(**internal_vars)
 
@@ -1030,7 +1052,6 @@ class FEM:
         self.J = J
         self.V = V
 
-
         if self.cauchy_bc_info is not None:
             D_face, selected_cells = self.compute_face(cells_sol, onp, True)
             V_face = D_face.reshape(-1)
@@ -1059,21 +1080,23 @@ class FEM:
         return self.compute_newton_vars(sol, **self.internal_vars)
 
     def set_params(self, params):
-        """Used for solving inverse problems.
-        """
+        """Used for solving inverse problems."""
         raise NotImplementedError("Child class must implement this function!")
 
     def print_BC_info(self):
-        """Print boundary condition information for debugging purposes.
-        """
-        if hasattr(self, 'neumann_boundary_inds_list'):
+        """Print boundary condition information for debugging purposes."""
+        if hasattr(self, "neumann_boundary_inds_list"):
             print(f"\n\n### Neumann B.C. is specified")
             for i in range(len(self.neumann_boundary_inds_list)):
                 print(f"\nNeumann Boundary part {i + 1} information:")
                 print(self.neumann_boundary_inds_list[i])
-                print(f"Array.shape = (num_selected_faces, 2) = {self.neumann_boundary_inds_list[i].shape}")
+                print(
+                    f"Array.shape = (num_selected_faces, 2) = {self.neumann_boundary_inds_list[i].shape}"
+                )
                 print(f"Interpretation:")
-                print(f"    Array[i, 0] returns the global cell index of the ith selected face")
+                print(
+                    f"    Array[i, 0] returns the global cell index of the ith selected face"
+                )
                 print(
                     f"    Array[i, 1] returns the local face index of the ith selected face"
                 )

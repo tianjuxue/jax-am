@@ -29,7 +29,7 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 5., 5., 5.
-Nx, Ny, Nz = 20, 20, 20
+Nx, Ny, Nz = 50, 50, 50
 meshio_mesh = box_mesh(Nx=Nx,
                        Ny=Ny,
                        Nz=Nz,
@@ -69,5 +69,5 @@ problem = LinearElasticity(mesh,
                            dirichlet_bc_info=dirichlet_bc_info,
                            neumann_bc_info=neumann_bc_info)
 sol = solver(problem, linear=True, use_petsc=True)
-vtk_path = os.path.join(data_dir, 'vtk/u_32_core.vtu')
+vtk_path = os.path.join(data_dir, 'vtk/u.vtu')
 save_sol(problem, sol, vtk_path)
