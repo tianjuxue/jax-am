@@ -5,7 +5,7 @@ from jax.experimental.sparse import BCOO
 
 # DEBUGGING ONLY:
 import os
-os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=3'
+os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=32'
 import scipy
 from functools import partial, wraps
 import sys
@@ -1026,11 +1026,9 @@ class FEM:
         J = onp.repeat(inds[:, None, :], self.num_nodes * self.vec,
                        axis=1).reshape(-1)
 
-        # TODO: Replace this with a sparse matrix representation - less memory
-        # intensive
-        # self.I = I
-        # self.J = J
-        # self.V = V
+        self.I = I
+        self.J = J
+        self.V = V
 
 
         if self.cauchy_bc_info is not None:
@@ -1047,12 +1045,9 @@ class FEM:
                                 axis=1).reshape(-1)
 
             # TODO: Same as above
-            I = onp.hstack((I, I_face))
-            J = onp.hstack((J, J_face))
-            V = onp.hstack((V, V_face))
-
-        self.A_sp_scipy = scipy.sparse.csr_array((V, (I, J)),
-                                           shape=(self.num_total_dofs, self.num_total_dofs))
+            self.I = onp.hstack((self.I, I_face))
+            self.J = onp.hstack((self.J, J_face))
+            self.V = onp.hstack((self.V, V_face))
 
         return self.compute_residual_vars_helper(sol, weak_form,
                                                  **internal_vars)

@@ -69,5 +69,5 @@ problem = LinearElasticity(mesh,
                            dirichlet_bc_info=dirichlet_bc_info,
                            neumann_bc_info=neumann_bc_info)
 sol = solver(problem, linear=True, use_petsc=True)
-vtk_path = os.path.join(data_dir, 'vtk/u.vtu')
+vtk_path = os.path.join(data_dir, 'vtk/u_32_core.vtu')
 save_sol(problem, sol, vtk_path)

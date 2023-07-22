@@ -244,12 +244,13 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
 
 
 def get_A_fn(problem, use_petsc):
-    A_sp_scipy = problem.A_sp_scipy
+    logger.info("Creating sparse matrix with scipy...")
 
-    # A_sp_scipy = scipy.sparse.csr_array(
-    #     (problem.V, (problem.I, problem.J)),
-    #     shape=(problem.num_total_dofs, problem.num_total_dofs))
+    A_sp_scipy = scipy.sparse.csr_array(
+        (problem.V, (problem.I, problem.J)),
+        shape=(problem.num_total_dofs, problem.num_total_dofs))
 
+    problem.A_sp_scipy = A_sp_scipy
 
     # By putting this under an if statement, we avoid creation of the BCOO
     # matrix when using petsc
@@ -259,10 +260,6 @@ def get_A_fn(problem, use_petsc):
 
         def compute_linearized_residual(dofs):
             return A_sp @ dofs
-
-    # logger.info(f"Global sparse matrix takes about {A_sp.data.shape[0]*8*3/2**30} G memory to store.")
-    # Do we actually need to store it globally?
-    problem.A_sp_scipy = A_sp_scipy
 
     if use_petsc:
         A = PETSc.Mat().createAIJ(size=A_sp_scipy.shape,
