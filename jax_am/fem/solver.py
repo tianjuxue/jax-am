@@ -5,8 +5,12 @@ from jax.experimental.sparse import BCOO
 import scipy
 import time
 
-# petsc4py.init()
+
+import sys
+import petsc4py
 from petsc4py import PETSc
+petsc4py.init(sys.argv)
+
 
 import logging
 
@@ -15,12 +19,15 @@ logger = logging.getLogger(__name__)
 ################################################################################
 # PETSc linear solver or JAX linear solver
 
-
 def petsc_solve(A, b, ksp_type, pc_type):
     rhs = PETSc.Vec().createSeq(len(b))
     rhs.setValues(range(len(b)), onp.array(b))
-    ksp = PETSc.KSP().create()
+    ksp = PETSc.KSP().create(comm=A.getComm())
     ksp.setOperators(A)
+    #====================
+    A.assemblyBegin()
+    A.assemblyEnd()
+    #====================
     ksp.setFromOptions()
     ksp.setType(ksp_type)
     ksp.pc.setType(pc_type)

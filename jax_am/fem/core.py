@@ -18,7 +18,7 @@ from jax.experimental.sparse import BCOO
 # DEBUGGING ONLY:
 import os
 
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=1"
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
 
 logger = logging.getLogger(__name__)
 
@@ -770,7 +770,7 @@ class FEM:
         n_devices = jax.device_count()
         logger.debug(f"Using {n_devices} devices in split_and_compute_cell")
         # Total number of chunks - this is dictated by the memory
-        n_chunks_total = 20
+        n_chunks_total = 10
 
         # Having a number of chunks divisible by the number of devices is
         # good for load balancing.
@@ -778,6 +778,7 @@ class FEM:
         # Ensure n_chunks_total is at least n_devices and a multiple of n_devices
         n_chunks_total = max(n_devices,
                              (n_chunks_total // n_devices) * n_devices)
+ls
 
         input_data = [
             cells_sol,
@@ -800,24 +801,25 @@ class FEM:
             target_size = n_cells + padding_size
             n_cells_per_device = target_size // n_devices
 
+            @timeit
             def _pad_and_reshape(x):
                 # Pad the arrays with zeros
-                pad_width = [(0, 0)] * np.ndim(x)
-                pad_width[0] = (0, padding_size)
-                x_padded = np.pad(x, pad_width)
+                if padding_size:
+                    pad_width = [(0, 0)] * onp.ndim(x)
+                    pad_width[0] = (0, padding_size)
+                    x = onp.pad(x, pad_width)
                 device_shape = (n_devices, n_cells_per_device)
-                x_reshaped = x_padded.reshape(device_shape +
-                                              x_padded.shape[1:])
-                return x_reshaped
-
-            def _remove_padding(x):
+                x = x.reshape(device_shape + x.shape[1:])
+                return x
+            @timeit
+            def _remove_pad_and_reshape(x):
                 # Reshape to the original shape
                 x = x.reshape(-1, *x.shape[2:])
                 # Compute how much to slice off
-                slice_end = -padding_size if padding_size else None
-                x_unpadded = x[:slice_end]
-
-                return x_unpadded
+                if padding_size:
+                    slice_end = -padding_size if padding_size else None
+                    x = x[:slice_end]
+                return x
 
             # Pad and reshape to distribute across devices
             input_data = jax.tree_map(_pad_and_reshape, input_data)
@@ -832,7 +834,6 @@ class FEM:
             return data_chunk
 
         def chunked_vmap(f, num_chunks):
-
             def chunked_fn(input_data):
                 # Check the size of the first argument
                 n_elements = input_data[0].shape[0]
@@ -853,32 +854,34 @@ class FEM:
                     else:
                         value = jax.vmap(f)(*data_chunk)
                         values.append(value)
+
+                vals = np.vstack(values)
+
                 if jac_flag:
-                    vals = jax.lax.concatenate(values, 0)
-                    jacs = jax.lax.concatenate(jacs, 0)
+                    jacs = np.vstack(jacs)
                     return vals, jacs
                 else:
-                    return jax.lax.concatenate(value, 0)
+                    return vals
 
             return chunked_fn
 
         n_chunks_per_device = n_chunks_total // n_devices
         chunked_vmap_fn = chunked_vmap(fn, n_chunks_per_device)
-        apply_fn = jax.pmap(
-            chunked_vmap_fn) if n_devices > 1 else chunked_vmap_fn
+        apply_fn = jax.pmap(chunked_vmap_fn) if n_devices > 1 else chunked_vmap_fn
         # PyTree of inputs to the kernel function
 
         if jac_flag:
             values, jacs = apply_fn(input_data)
+
             if n_devices > 1:
-                values = _remove_padding(values)
-                jacs = _remove_padding(jacs)
+                values = _remove_pad_and_reshape(values)
+                jacs = _remove_pad_and_reshape(jacs)
 
             return values, jacs
         else:
             values = apply_fn(input_data)
             if n_devices > 1:
-                values = _remove_padding(values)
+                values = _remove_pad_and_reshape(values)
 
             return values
 

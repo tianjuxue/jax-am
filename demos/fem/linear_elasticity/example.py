@@ -4,6 +4,7 @@ from jax_am.fem.core import FEM
 from jax_am.fem.solver import solver
 from jax_am.fem.utils import save_sol
 from jax_am.fem.generate_mesh import box_mesh, get_meshio_cell_type, Mesh
+from jax_am.common import timeit
 
 import logging
 logger = logging.getLogger()
@@ -29,7 +30,7 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 5., 5., 5.
-Nx, Ny, Nz = 50, 50, 50
+Nx, Ny, Nz = 30, 30, 30
 meshio_mesh = box_mesh(Nx=Nx,
                        Ny=Ny,
                        Nz=Nz,
@@ -68,6 +69,7 @@ problem = LinearElasticity(mesh,
                            ele_type=ele_type,
                            dirichlet_bc_info=dirichlet_bc_info,
                            neumann_bc_info=neumann_bc_info)
+
 sol = solver(problem, linear=True, use_petsc=True)
 vtk_path = os.path.join(data_dir, 'vtk/u.vtu')
 save_sol(problem, sol, vtk_path)
