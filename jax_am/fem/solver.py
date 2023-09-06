@@ -7,7 +7,7 @@ import time
 
 # petsc4py.init()
 from petsc4py import PETSc
-
+import jax.experimental.host_callback as hcb
 from jax_am import logger
 
 ################################################################################
@@ -51,8 +51,9 @@ def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
     pc_matrix
         The matrix to use as preconditioner
     """
-    pc = get_jacobi_precond(
-        jacobi_preconditioner(problem)) if precond else None
+    # pc = get_jacobi_precond(
+    #     jacobi_preconditioner(problem)) if precond else None
+    pc = get_ilu_preconditioner(ilu_preconditioner(problem)) if precond else None
     x, info = jax.scipy.sparse.linalg.bicgstab(A_fn,
                                                b,
                                                x0=x0,
@@ -205,6 +206,26 @@ def jacobi_preconditioner(problem):
     jacobi = assign_ones_bc(jacobi.reshape(-1), problem)
     return jacobi
 
+def ilu_preconditioner(problem):
+    logger.debug(f"Compute and use ILU preconditioner")
+    data = problem.V
+    indices_i = problem.I.astype(onp.int32)
+    indices_j = problem.J.astype(onp.int32)
+    A_sp_csc = scipy.sparse.csc_matrix((data, (indices_i, indices_j)),
+                                        shape=(problem.num_total_dofs,
+                                                  problem.num_total_dofs))
+    ilu = scipy.sparse.linalg.spilu(A_sp_csc)
+    # ilu_precond = scipy.sparse.linalg.LinearOperator(shape=A_sp_csc.shape,
+    #                                                  matvec=ilu.solve)
+    return ilu
+
+def get_ilu_preconditioner(ilu):
+    def apply_ilu_precond(x):
+        out = hcb.call(ilu.solve,
+                       x,
+                       result_shape=jax.ShapeDtypeStruct(x.shape, x.dtype))
+        return out
+    return apply_ilu_precond
 
 def get_jacobi_precond(jacobi):
 
