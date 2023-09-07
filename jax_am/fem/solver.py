@@ -40,7 +40,8 @@ def petsc_solve(A, b, ksp_type, pc_type):
     return x.getArray()
 
 
-def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
+def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None,
+              precond_type='jacobi'):
     """Solves the equilibrium equation using a JAX solver.
     Is fully traceable and runs on GPU.
 
@@ -50,17 +51,25 @@ def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
         Whether to calculate the preconditioner or not
     pc_matrix
         The matrix to use as preconditioner
+    precond_type
+        The type of preconditioner to use. Can be 'jacobi' or 'ilu'
     """
-    # pc = get_jacobi_precond(
-    #     jacobi_preconditioner(problem)) if precond else None
-    pc = get_ilu_preconditioner(ilu_preconditioner(problem)) if precond else None
+    if precond_type == 'jacobi':
+        pc = get_jacobi_precond(
+            jacobi_preconditioner(problem)) if precond else None
+    elif precond_type == 'ilu':
+        pc = get_ilu_preconditioner(
+            ilu_preconditioner(problem)) if precond else None
+    else:
+        raise ValueError(f"Unknown preconditioner type {precond_type}")
+
     x, info = jax.scipy.sparse.linalg.bicgstab(A_fn,
                                                b,
                                                x0=x0,
                                                M=pc,
                                                tol=1e-10,
                                                atol=1e-10,
-                                               maxiter=10000)
+                                               maxiter=1000)
 
     # Verify convergence
     err = np.linalg.norm(A_fn(x) - b)
@@ -201,31 +210,62 @@ def operator_to_matrix(operator_fn, problem):
 
 
 def jacobi_preconditioner(problem):
-    logger.debug(f"Compute and use jacobi preconditioner")
+    logger.debug("Compute and use jacobi preconditioner")
     jacobi = np.array(problem.A_sp_scipy.diagonal())
     jacobi = assign_ones_bc(jacobi.reshape(-1), problem)
     return jacobi
 
 def ilu_preconditioner(problem):
-    logger.debug(f"Compute and use ILU preconditioner")
-    data = problem.V
-    indices_i = problem.I.astype(onp.int32)
-    indices_j = problem.J.astype(onp.int32)
-    A_sp_csc = scipy.sparse.csc_matrix((data, (indices_i, indices_j)),
-                                        shape=(problem.num_total_dofs,
-                                                  problem.num_total_dofs))
-    ilu = scipy.sparse.linalg.spilu(A_sp_csc)
-    # ilu_precond = scipy.sparse.linalg.LinearOperator(shape=A_sp_csc.shape,
-    #                                                  matvec=ilu.solve)
-    return ilu
+    """Compute the ILU preconditioner for the problem.
+    The preconditioner is computed using PETSc4py.
+    """
+    logger.debug("Compute and use ILU preconditioner")
+    A = PETSc.Mat().createAIJ(size=problem.A_sp_scipy.shape,
+                              csr=(problem.A_sp_scipy.indptr.astype(PETSc.IntType, copy=False),
+                                   problem.A_sp_scipy.indices.astype(PETSc.IntType, copy=False),
+                                   problem.A_sp_scipy.data))
+    pc = PETSc.PC().create()
+    pc.setType('ilu')
+    pc.setFactorLevels(2)  #  More levels means more accurate but slower
+    pc.setOperators(A)
+    logger.debug("Finished ILU preconditioner setup")
+    return pc
 
-def get_ilu_preconditioner(ilu):
+
+def get_ilu_preconditioner(pc):
+    """Returns a function that applies the ILU preconditioner to a vector.
+    Since host callbacks are used, this can work with traced arrays.
+
+    Parameters
+    ----------
+    pc
+        PETSc preconditioner object
+
+    Returns
+    -------
+    apply_ilu_precond
+        Function that applies the preconditioner to a vector.
+    """
+
+    def matvec(x):
+        x_petsc = PETSc.Vec().createSeq(len(x))
+        x_petsc.setValues(range(len(x)), onp.array(x))
+        res_petsc = PETSc.Vec().createSeq(len(x))
+        # Apply the preconditioner
+        pc.apply(x_petsc, res_petsc)
+        res = res_petsc.getArray().reshape(x.shape)
+        return res.astype(x.dtype)
+
     def apply_ilu_precond(x):
-        out = hcb.call(ilu.solve,
+        logger.debug("Matvec started")
+        out = hcb.call(matvec,
                        x,
                        result_shape=jax.ShapeDtypeStruct(x.shape, x.dtype))
+        logger.debug("Matvec is done")
         return out
+
     return apply_ilu_precond
+
 
 def get_jacobi_precond(jacobi):
 
@@ -264,7 +304,7 @@ def linear_guess_solve(problem, A_fn, precond, use_petsc):
 
 
 def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
-                              use_petsc):
+                              use_petsc, precond_type='jacobi'):
     """Lift solver
     """
     logger.debug(f"Solving linear system with lift solver...")
@@ -276,7 +316,8 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
         x0_1 = assign_bc(np.zeros_like(b), problem)
         x0_2 = copy_bc(dofs, problem)
         x0 = x0_1 - x0_2
-        inc = jax_solve(problem, A_fn, b, x0, precond)
+        inc = jax_solve(problem, A_fn, b, x0, precond,
+                        precond_type=precond_type)
 
     dofs = dofs + inc
 
@@ -350,7 +391,8 @@ def get_A_fn(problem, use_petsc):
     return A
 
 
-def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
+def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc,
+                           precond_type='jacobi'):
     """The solver imposes Dirichlet B.C. with "row elimination" method.
 
     Some memo:
@@ -386,7 +428,7 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
         res_vec, A_fn = newton_update_helper(dofs)
 
         dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
-                                         use_petsc)
+                                         use_petsc, precond_type=precond_type)
 
         res_vec, A_fn = newton_update_helper(dofs)
         res_val = np.linalg.norm(res_vec)
@@ -858,7 +900,8 @@ def solver(problem,
            linear=False,
            precond=True,
            initial_guess=None,
-           use_petsc=False):
+           use_petsc=False,
+           precond_type='jacobi'):
     """periodic B.C. is a special form of adding a linear constraint.
     Lagrange multiplier seems to be convenient to impose this constraint.
     """
@@ -866,7 +909,7 @@ def solver(problem,
     # and suggest PETSc or jax solver
     if problem.periodic_bc_info is None:
         return solver_row_elimination(problem, linear, precond, initial_guess,
-                                      use_petsc)
+                                      use_petsc, precond_type=precond_type)
     else:
         return solver_lagrange_multiplier(problem, linear, use_petsc)
 
@@ -947,12 +990,12 @@ def implicit_vjp(problem, sol, params, v, use_petsc):
     return vjp_result
 
 
-def ad_wrapper(problem, linear=False, use_petsc=False):
+def ad_wrapper(problem, linear=False, use_petsc=False, precond_type='jacobi'):
 
     @jax.custom_vjp
     def fwd_pred(params):
         problem.set_params(params)
-        sol = solver(problem, linear=linear, use_petsc=use_petsc)
+        sol = solver(problem, linear=linear, use_petsc=use_petsc, precond_type=precond_type)
         return sol
 
     def f_fwd(params):
