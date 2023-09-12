@@ -27,6 +27,7 @@ def petsc_solve(A, b, ksp_type, pc_type):
         f'pc = {ksp.pc.getType()}'
     )
     x = PETSc.Vec().createSeq(len(b))
+    ksp.setTolerances(rtol=1e-10)  # newly added
     ksp.solve(rhs, x)
 
     # Verify convergence
@@ -912,7 +913,7 @@ def implicit_vjp(problem, sol, params, v, use_petsc):
         #     A_transpose.zeroRows(row_inds)
         # v = assign_zeros_bc(v, problem)
 
-        adjoint = petsc_solve(A_transpose, v.reshape(-1), 'minres', 'ilu')
+        adjoint = petsc_solve(A_transpose, v.reshape(-1), 'bcgsl', 'ilu')
 
     else:
         adjoint_linear_fn = get_vjp_contraint_fn_dofs(sol.reshape(-1))
