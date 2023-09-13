@@ -21,7 +21,9 @@ Our vision is to share with the AM community a __free, open-source__ (under the 
 * [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
 * [Zhengtao Gan](https://zgan.my.canva.site/) -->
 
-:fire: <u>***Join us for the development of JAX-AM!***</u> :rocket:
+:fire: <u>***Join us for the development of JAX-AM!***</u>
+
+:mortar_board: $${\color{red}Hiring!!!}$$ Dr. Tianju Xue recently joined HKUST and has openings for Ph.D. students! (See [details](tianjuxue.github.io/hiring/PhD_student_advertisement.pdf))
 
 ## Discrete Element Method (DEM)
 
