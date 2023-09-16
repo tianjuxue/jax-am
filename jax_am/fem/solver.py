@@ -38,6 +38,11 @@ def petsc_solve(A, b, ksp_type, pc_type):
     logger.debug(f"PETSc linear solve res = {err}")
     # assert err < 0.1, f"PETSc linear solver failed to converge, err = {err}"
 
+    # Delete PETSc objects
+    ksp.destroy()
+    rhs.destroy()
+    y.destroy()
+    A.destroy()
     return x.getArray()
 
 
