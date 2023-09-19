@@ -20,7 +20,8 @@ def petsc_solve(A, b, ksp_type, pc_type, direct_solve=True):
     ksp = PETSc.KSP().create()
     ksp.setFromOptions()
     if direct_solve:
-        ksp.setOperators((A + A.transpose())/2.0)
+        # A = (A + A.transpose())/2.0 # Causes errors A= A.t but A != (A + A.T)/2.0
+        ksp.setOperators(A)
         ksp.setType('preonly')
         ksp.pc.setType('lu')
     else:
