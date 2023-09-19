@@ -14,14 +14,19 @@ from jax_am import logger
 # PETSc linear solver or JAX linear solver
 
 
-def petsc_solve(A, b, ksp_type, pc_type):
+def petsc_solve(A, b, ksp_type, pc_type, direct_solve=True):
     rhs = PETSc.Vec().createSeq(len(b))
     rhs.setValues(range(len(b)), onp.array(b))
     ksp = PETSc.KSP().create()
-    ksp.setOperators(A)
     ksp.setFromOptions()
-    ksp.setType(ksp_type)
-    ksp.pc.setType(pc_type)
+    if direct_solve:
+        ksp.setOperators((A + A.transpose())/2.0)
+        ksp.setType('preonly')
+        ksp.pc.setType('lu')
+    else:
+        ksp.setOperators(A)
+        ksp.setType(ksp_type)
+        ksp.pc.setType(pc_type)
     logger.debug(
         f'PETSc - Solving with ksp_type = {ksp.getType()}, '
         f'pc = {ksp.pc.getType()}'
