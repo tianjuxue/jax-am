@@ -87,7 +87,7 @@ PFM models the grain development that is critical to form the structure of the a
 
 $${\color{red}We \space have \space decided \space to \space move \space the \space development \space of \space FEM \space to \space a \space separate \space repository.}$$ 
 
-Check [JAX-FEM](https://github.com/tianjuxue/jax-fem). This is a design decision that aims to push the FEM module into a general-purpose, independent package that works for problems beyond additive manufacturing only. Therefore, the code related to FEM in this repository will **NOT** be updated in the future.
+Check [JAX-FEM](https://github.com/tianjuxue/jax-fem). This is a design decision that aims to push the FEM module into a general-purpose, independent package that works for problems beyond additive manufacturing only. Therefore, the code related to FEM in this repository (JAX-AM) will **NOT** be updated in the future.
 
 FEM is a powerful tool for thermal-mechanical analysis in AM. We support the following features
 
