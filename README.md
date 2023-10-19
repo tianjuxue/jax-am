@@ -83,7 +83,7 @@ PFM models the grain development that is critical to form the structure of the a
 
 ## Finite Element Method (FEM)
 
-:mega: :mega::mega:
+:mega: :mega: :mega:
 
 $${\color{red}We \space have \space decided \space to \space move \space the \space development \space of \space FEM \space to \space a \space separate \space repository.}$$ 
 
