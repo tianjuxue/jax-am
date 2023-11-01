@@ -21,7 +21,7 @@ Our vision is to share with the AM community a __free, open-source__ (under the 
 * [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
 * [Zhengtao Gan](https://zgan.my.canva.site/) -->
 
-:mortar_board: ***Dr. Tianju Xue recently joined HKUST and has openings for Ph.D. students! (See [details](https://tianjuxue.github.io/hiring/PhD_student_advertisement.pdf))***
+:mortar_board: ***Dr. Tianju Xue recently joined HKUST and has openings for Postdoc or Research Assistant working on JAX-FEM! (See [details](https://tianjuxue.github.io/hiring/FEM_position.pdf))***
 
 :fire: ***Join us for the development of JAX-AM!***
 
@@ -87,7 +87,7 @@ PFM models the grain development that is critical to form the structure of the a
 
 $${\color{red}We \space have \space decided \space to \space move \space the \space development \space of \space FEM \space to \space a \space separate \space repository.}$$ 
 
-Check [JAX-FEM](https://github.com/tianjuxue/jax-fem). This is a design decision that aims to push the FEM module into a general-purpose, independent package that works for problems beyond additive manufacturing only. Therefore, the code related to FEM in this repository (JAX-AM) will **NOT** be updated in the future.
+Check [JAX-FEM](https://github.com/tianjuxue/jax-fem). This is a design decision that aims to push the FEM module into a general-purpose, independent package that works for problems beyond additive manufacturing. Therefore, the code related to FEM in this repository (JAX-AM) will **NOT** be updated in the future.
 
 FEM is a powerful tool for thermal-mechanical analysis in AM. We support the following features
 
