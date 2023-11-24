@@ -91,7 +91,7 @@ def problem():
     def simulation(scale_d):
         params = problem.internal_vars['laplace']
         results_to_save = []
-        for i in range(2):
+        for i in range(10):
             print(f"\nStep {i + 1} in {len(ts) - 1}, disp = {disps[i + 1]}")
             problem.dt = ts[i + 1] - ts[i]
             sol = fwd_pred([scale_d*disps[i + 1], params])  
