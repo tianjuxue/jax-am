@@ -21,7 +21,7 @@ Our vision is to share with the AM community a __free, open-source__ (under the 
 * [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
 * [Zhengtao Gan](https://zgan.my.canva.site/) -->
 
-:mortar_board: ***Dr. Tianju Xue recently joined HKUST and has openings for Postdoc or Research Assistant working on JAX-FEM! (See [details](https://tianjuxue.github.io/hiring/FEM_position.pdf))***
+:mortar_board: ***Dr. Tianju Xue at HKUST has openings for Postdoc or Research Assistant working on JAX-FEM! (See [details](https://tianjuxue.github.io/hiring/FEM_position.pdf))***
 
 :fire: ***Join us for the development of JAX-AM!***
 
@@ -89,50 +89,6 @@ $${\color{red}We \space have \space decided \space to \space move \space the \sp
 
 Check [JAX-FEM](https://github.com/tianjuxue/jax-fem). This is a design decision that aims to push the FEM module into a general-purpose, independent package that works for problems beyond additive manufacturing. Therefore, the code related to FEM in this repository (JAX-AM) will **NOT** be updated in the future.
 
-FEM is a powerful tool for thermal-mechanical analysis in AM. We support the following features
-
-- 2D quadrilateral/triangle elements
-- 3D hexahedron/tetrahedron elements
-- First and second order elements
-- Dirichlet/Neumann/Cauchy/periodic boundary conditions
-- Linear and nonlinear analysis including
-  - Heat equation
-  - Linear elasticity
-  - Hyperelasticity
-  - Plasticity (macro and crystal plasticity)
-- Differentiable simulation for solving inverse/design problems __without__ human deriving sensitivities, e.g.,
-  - Toplogy optimization
-  - Optimal thermal control
-
-
-<p align="middle">
-  <img src="docs/materials/ded.gif" width="600" />
-</p>
-<p align="middle">
-    <em >Thermal profile in direct energy deposition.</em>
-</p>
-
-<p align="middle">
-  <img src="docs/materials/von_mises.png" width="400" />
-</p>
-<p align="middle">
-    <em >Linear static analysis of a bracket.</em>
-</p>
-
-<p align="middle">
-  <img src="docs/materials/polycrystal_grain.gif" width="350" />
-  <img src="docs/materials/polycrystal_stress.gif" width="350" /> 
-</p>
-<p align="middle">
-    <em >Crystal plasticity: grain structure (left) and stress-xx (right).</em>
-</p>
-
-<p align="middle">
-  <img src="docs/materials/to.gif" width="600" />
-</p>
-<p align="middle">
-    <em >Topology optimization with differentiable simulation.</em>
-</p>
 
 ## Documentation
 
