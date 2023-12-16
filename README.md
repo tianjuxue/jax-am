@@ -20,8 +20,8 @@ Our vision is to share with the AM community a __free, open-source__ (under the 
 * [Tianju Xue](https://tianjuxue.github.io/)
 * [Shuheng Liao](https://scholar.google.com/citations?user=uxIh-nYAAAAJ&hl=en)
 * [Zhengtao Gan](https://zgan.my.canva.site/) -->
-
-:mortar_board: ***Dr. Tianju Xue at HKUST has openings for Postdoc or Research Assistant working on JAX-FEM! (See [details](https://tianjuxue.github.io/hiring/FEM_position.pdf))***
+<!-- 
+:mortar_board: ***Dr. Tianju Xue at HKUST has openings for Postdoc or Research Assistant working on JAX-FEM! (See [details](https://tianjuxue.github.io/hiring/FEM_position.pdf))*** -->
 
 :fire: ***Join us for the development of JAX-AM!***
 

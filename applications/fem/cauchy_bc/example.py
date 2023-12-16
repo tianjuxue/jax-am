@@ -57,7 +57,7 @@ def problem():
     data_dir = os.path.join(os.path.dirname(__file__), 'data')
     vec = 1
     dim = 2
-    ele_type = 'TRI4'
+    ele_type = 'TRI3'
     _, _, _, _, degree, _ = get_elements(ele_type)
     msh_file_path = gmsh_mesh(data_dir, degree)
     cell_type = get_meshio_cell_type(ele_type)
