@@ -4,7 +4,7 @@ import os
 import meshio
 import json
 import yaml
-
+import pandas as pd 
 import time
 from functools import wraps
 
@@ -84,7 +84,49 @@ def make_video(data_dir):
     os.system(
         f'ffmpeg -y -framerate 10 -i {data_dir}/png/tmp/u.%04d.png -pix_fmt yuv420p -vf \
                "crop=trunc(iw/2)*2:trunc(ih/2)*2" {data_dir}/mp4/test.mp4') # noqa
-
+    
+    
+def to_data_frame(data_dir, dt=2 * 1e-6):
+    mesh_dir = os.path.join(data_dir, 'msh', 'box.msh')
+    vtk_dir = os.path.join(data_dir, 'vtk')
+    all_data = []
+    mesh = meshio.read(mesh_dir)
+    mesh_df = pd.DataFrame(mesh.points, columns=["x", "y", "z"])
+    vtu_files = [f for f in os.listdir(vtk_dir) if f.endswith('.vtu')]
+    
+    # Assuming the first file is always available and correctly formatted
+    stepsave = int(vtu_files[1][-9:-4])
+    print(f"Step save: {stepsave}")
+    
+    i = 0
+    
+    for vtu_file in vtu_files:
+        time_value = round(i * stepsave * dt, 8)
+        time = pd.Series(onp.full(len(mesh_df), time_value))
+        vtu_path = os.path.join(vtk_dir, vtu_file)
+        vtu_data = meshio.read(vtu_path)
+        data_dict = pd.concat([mesh_df, time.rename('time')], axis=1)
+        
+        if vtu_data.point_data:
+            for name, data in vtu_data.point_data.items():
+                # Handle the case where data has multiple components (e.g., a vector field)
+                if data.ndim == 1:
+                    # Data has a single component
+                    data_dict[name] = data
+                else:
+                    # Flatten multi-dimensional data into separate columns
+                    for idx in onp.ndindex(data.shape[1:]):
+                        flattened_name = f"{name}_{'_'.join(map(str, idx))}"
+                        data_dict[flattened_name] = data[(slice(None),) + idx]
+                i += 1
+                
+            all_data.append(pd.DataFrame(data_dict))
+    
+    DF = pd.concat(all_data, ignore_index=True)
+    DF.to_csv("data_frame.csv", index=False)
+    print('save as data_frame.csv')
+    return DF
+    
 
 # A simpler decorator for printing the timing results of a function
 def timeit(func):
