@@ -31,7 +31,11 @@ class Field:
 
         mesh = meshio.read(os.path.join(neper_folder, f"domain.msh"))
         points = mesh.points
-        cells = mesh.cells_dict['hexahedron']
+        for cell_type in mesh.cells_dict.keys():
+            if cell_type.startswith('hexahedron'):
+                print(f"Found hexahedral cell type: {cell_type}")
+                cells = mesh.cells_dict[cell_type]
+                break
         cell_grain_inds = mesh.cell_data['gmsh:physical'][0] - 1
         assert self.pf_args['num_grains'] == onp.max(cell_grain_inds) + 1, \
         f"specified number of grains = {self.pf_args['num_grains']}, actual Neper = {onp.max(cell_grain_inds) + 1}"
