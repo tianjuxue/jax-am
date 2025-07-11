@@ -11,7 +11,7 @@ Welcome to JAX-AM's documentation!
 
 .. note::
 
-   This project is under active development.
+   We need funding for further development of the project.
 
 Solving Problems in Additive Manufacturing
 ------------------------------------------
@@ -58,7 +58,6 @@ Contents
 
    installation
    quick_start
-   notes
    tutorial
    about
 
